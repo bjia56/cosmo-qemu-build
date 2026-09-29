@@ -98,11 +98,12 @@ x86_64)
     fi
     ;;
 aarch64)
-    # Bare-metal payload for the virt machine's PL011 UART at 0x09000000
+    # Bare-metal payload for the virt machine's PL011 UART at 0x09000000. It is loaded
+    # above the start of RAM, where virt puts its device tree.
     printf '\001\040\241\322\342\000\000\020\103\024\100\070\143\000\000\064\043\000\000\071\375\377\377\027\177\040\003\325\377\377\377\027COSMO-AARCH64-BOOT-OK\n\0' > payload.bin
 
     run_guest "COSMO-AARCH64-BOOT-OK" -machine virt -cpu cortex-a57 -accel tcg \
-        -device loader,file=payload.bin,addr=0x40000000,cpu-num=0 \
+        -device loader,file=payload.bin,addr=0x40200000,cpu-num=0 \
         || fail "bare-metal payload on virt (TCG)"
     pass "bare-metal payload on virt (TCG)"
 
@@ -114,7 +115,7 @@ aarch64)
 
     if [ "$host_arch" = "aarch64" ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
         run_guest "COSMO-AARCH64-BOOT-OK" -machine virt -cpu host -accel kvm \
-            -device loader,file=payload.bin,addr=0x40000000,cpu-num=0 \
+            -device loader,file=payload.bin,addr=0x40200000,cpu-num=0 \
             || fail "bare-metal payload on virt (KVM)"
         pass "bare-metal payload on virt (KVM)"
     else

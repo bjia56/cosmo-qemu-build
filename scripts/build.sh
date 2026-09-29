@@ -385,7 +385,7 @@ EOF
 guest_firmware_regex() {
     case "$1" in
         x86_64) echo '^(bios(-256k|-microvm)?\.bin|qboot\.rom|vgabios.*\.bin|kvmvapic\.bin|linuxboot(_dma)?\.bin|multiboot(_dma)?\.bin|pvh\.bin|sgabios\.bin|efi-.*\.rom|edk2-(x86_64|i386)-.*\.fd|edk2-licenses\.txt|firmware/.*(x86_64|i386).*\.json|keymaps/.+)$' ;;
-        aarch64) echo '^(vgabios.*\.bin|efi-.*\.rom|edk2-(aarch64|arm)-.*\.fd|edk2-licenses\.txt|firmware/.*(aarch64|arm).*\.json|keymaps/.+)$' ;;
+        aarch64) echo '^(vgabios.*\.bin|efi-.*\.rom|edk2-aarch64-.*\.fd|edk2-licenses\.txt|firmware/.*aarch64.*\.json|keymaps/.+)$' ;;
     esac
 }
 
@@ -413,10 +413,16 @@ with open(out, "w") as f:
 ' "${qb}" "$(guest_firmware_regex "$guest")" "${list}"
     [ -s "${list}" ] || die "no firmware selected for ${guest}"
 
-    # Anything under the build directory is a generated file that has to be
-    # built (edk2 images are decompressed, keymaps generated)
-    local targets
-    targets=$(awk -F'\t' -v qb="${qb}/" 'index($1, qb) == 1 { print substr($1, length(qb) + 1) }' "${list}")
+    # Generated files under the build directory that do not exist yet have to
+    # be built (edk2 images are decompressed, keymaps generated). Some, like
+    # the firmware descriptors, are written by configure and are not ninja
+    # targets at all, so only ask for the missing ones.
+    local targets="" src rel
+    while IFS=$'\t' read -r src rel; do
+        if [ ! -f "${src}" ] && [ "${src#"${qb}/"}" != "${src}" ]; then
+            targets+=" ${src#"${qb}/"}"
+        fi
+    done < "${list}"
     if [ -n "${targets}" ]; then
         # shellcheck disable=SC2086
         (cd "${qb}" && ninja -j"${JOBS}" ${targets}) >"${LOG_DIR}/firmware-${guest}.log" 2>&1 \
@@ -460,6 +466,8 @@ build_qemu() {
 
     # Notes on the flags:
     #  --prefix=/zip              data files are looked up in the embedded zip
+    #  --disable-relocatable      otherwise QEMU resolves its data directory
+    #                             relative to the executable, not to /zip
     #  --disable-stack-protector  cosmocc constructors run before TLS is set up
     #  --with-coroutine=ucontext  the sigaltstack backend deadlocks under cosmo
     #  --disable-plugins          TCG plugins are loaded with dlopen
@@ -468,7 +476,7 @@ build_qemu() {
     run_logged "${arch}-qemu-configure" env \
         PKG_CONFIG_PATH="${S}/lib/pkgconfig" PKG_CONFIG_LIBDIR="${S}/lib/pkgconfig" \
         "${SRC_DIR}/qemu/configure" \
-        --prefix=/zip \
+        --prefix=/zip --disable-relocatable \
         --cross-prefix="${arch}-cosmo-" --cpu="${arch}" --host-cc=cc \
         --extra-cflags="${extra_cflags}" --extra-ldflags="-L${S}/lib" \
         "${system_flags[@]}" \
