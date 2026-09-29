@@ -373,7 +373,7 @@ cp "${SRC_DIR}/qemu/COPYING" "${OUTPUT_LICENSE}"
     echo "qemu-img.com statically links the following libraries."
     echo "QEMU itself is licensed under the GPL-2.0 (see COPYING)."
     echo "Source for the binary, including all patches, is available at"
-    echo "https://github.com/bjia56/cosmo-qemu-img"
+    echo "https://github.com/bjia56/cosmo-qemu"
     for entry in \
         "glib ${GLIB_VERSION}|${SRC_DIR}/glib/COPYING" \
         "proxy-libintl ${PROXY_LIBINTL_VERSION}|${SRC_DIR}/glib/subprojects/proxy-libintl/COPYING" \
