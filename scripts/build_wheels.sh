@@ -32,24 +32,23 @@ cd "${PROJECT_ROOT}"
 VERSION=$(python3 -c "import sys; sys.path.insert(0, 'src'); from cosmo_qemu_img._version import __version__; print(__version__)")
 echo "Building cosmo-qemu-img ${VERSION}"
 
-rm -rf dist build
+rm -rf dist
 mkdir -p dist/wheels
 
 # Build a wheel from the current contents of the data directory and give it the
 # requested platform tag ("wheel tags" rewrites the metadata, not just the name).
 build_wheel() {
     local platform_tag=$1
-    rm -rf build dist/tmp
+    rm -rf build/lib build/bdist.* dist/tmp
     python3 -m build --wheel --outdir dist/tmp >/dev/null
     python3 -m wheel tags --platform-tag "${platform_tag}" --remove dist/tmp/*.whl >/dev/null
     mv dist/tmp/*.whl dist/wheels/
-    rm -rf dist/tmp build
+    rm -rf dist/tmp build/lib build/bdist.*
     echo "  built wheel for ${platform_tag}"
 }
 
 # Source distribution: contains the APE binary, licenses, patches and scripts
 python3 -m build --sdist --outdir dist >/dev/null
-rm -rf build
 echo "  built sdist"
 
 # Windows and macOS wheels carry the APE binary only

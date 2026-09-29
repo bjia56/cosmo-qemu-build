@@ -21,6 +21,7 @@
 # Optional environment:
 #   JOBS                 parallel build jobs (default: nproc)
 #   ARCHES               space separated list (default: "x86_64 aarch64")
+#   BUILD_DIR            build tree location (default: ./build)
 #   EXE_WRAPPER_<arch>   command used to run <arch> test programs
 #   QEMU_REPO            QEMU git URL
 #   GLIB_REPO            glib git URL
@@ -29,7 +30,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-BUILD_DIR="${PROJECT_ROOT}/build"
+BUILD_DIR="${BUILD_DIR:-${PROJECT_ROOT}/build}"
 DL_DIR="${BUILD_DIR}/dl"
 LOG_DIR="${BUILD_DIR}/logs"
 SRC_DIR="${BUILD_DIR}/source"
