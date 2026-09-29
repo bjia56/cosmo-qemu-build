@@ -1,0 +1,29 @@
+diff --git a/util/mmap-alloc.c b/util/mmap-alloc.c
+index ed14f9c..6feb3d2 100644
+--- a/util/mmap-alloc.c
++++ b/util/mmap-alloc.c
+@@ -10,7 +10,10 @@
+  * later.  See the COPYING file in the top-level directory.
+  */
+ 
+-#ifdef CONFIG_LINUX
++#ifdef __COSMOPOLITAN__
++/* cosmopolitan provides MAP_SHARED_VALIDATE as a runtime value, but no MAP_SYNC */
++#define MAP_SYNC              0x0
++#elif defined(CONFIG_LINUX)
+ #include <linux/mman.h>
+ #else  /* !CONFIG_LINUX */
+ #define MAP_SYNC              0x0
+@@ -27,8 +30,12 @@
+ 
+ #ifdef CONFIG_LINUX
+ #include <sys/vfs.h>
++#ifdef __COSMOPOLITAN__
++#define TMPFS_MAGIC           0x01021994
++#else
+ #include <linux/magic.h>
+ #endif
++#endif
+ 
+ QemuFsType qemu_fd_getfs(int fd)
+ {

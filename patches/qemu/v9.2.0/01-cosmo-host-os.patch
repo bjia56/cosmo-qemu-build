@@ -1,0 +1,15 @@
+diff --git a/configure b/configure
+index 1833637..98ce256 100755
+--- a/configure
++++ b/configure
+@@ -340,7 +340,9 @@ int main(void) { return 0; }
+ EOF
+ }
+ 
+-if check_define __linux__ ; then
++if check_define __COSMOPOLITAN__ ; then
++  host_os=cosmopolitan
++elif check_define __linux__ ; then
+   host_os=linux
+ elif check_define _WIN32 ; then
+   host_os=windows
