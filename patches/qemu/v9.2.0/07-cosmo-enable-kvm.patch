@@ -1,0 +1,105 @@
+diff --git a/configs/devices/i386-softmmu/default.mak b/configs/devices/i386-softmmu/default.mak
+index 4faf2f0..112b1ca 100644
+--- a/configs/devices/i386-softmmu/default.mak
++++ b/configs/devices/i386-softmmu/default.mak
+@@ -30,3 +30,7 @@
+ # CONFIG_Q35=n
+ # CONFIG_MICROVM=n
+ # CONFIG_NITRO_ENCLAVE=n
++
++# Xen HVM emulation on KVM needs the Linux eventfd API, which cosmopolitan
++# does not provide.
++CONFIG_XEN_EMU=n
+diff --git a/configure b/configure
+index 98ce256..42d6f9d 100755
+--- a/configure
++++ b/configure
+@@ -1716,7 +1716,7 @@ for f in $LINKS ; do
+ done
+ 
+ # use included Linux headers for KVM architectures
+-if test "$host_os" = "linux" && test -n "$linux_arch"; then
++if { test "$host_os" = "linux" || test "$host_os" = "cosmopolitan"; } && test -n "$linux_arch"; then
+   symlink "$source_path/linux-headers/asm-$linux_arch" linux-headers/asm
+ fi
+ 
+diff --git a/include/migration/vmstate.h b/include/migration/vmstate.h
+index f313f2f..35e6c99 100644
+--- a/include/migration/vmstate.h
++++ b/include/migration/vmstate.h
+@@ -902,7 +902,7 @@ extern const VMStateInfo vmstate_info_qlist;
+ #define VMSTATE_UINT64_V(_f, _s, _v)                                  \
+     VMSTATE_SINGLE(_f, _s, _v, vmstate_info_uint64, uint64_t)
+ 
+-#ifdef CONFIG_LINUX
++#if defined(CONFIG_LINUX) || defined(__COSMOPOLITAN__)
+ 
+ #define VMSTATE_U8_V(_f, _s, _v)                                   \
+     VMSTATE_SINGLE(_f, _s, _v, vmstate_info_uint8, __u8)
+@@ -936,7 +936,7 @@ extern const VMStateInfo vmstate_info_qlist;
+ #define VMSTATE_UINT64(_f, _s)                                        \
+     VMSTATE_UINT64_V(_f, _s, 0)
+ 
+-#ifdef CONFIG_LINUX
++#if defined(CONFIG_LINUX) || defined(__COSMOPOLITAN__)
+ 
+ #define VMSTATE_U8(_f, _s)                                         \
+     VMSTATE_U8_V(_f, _s, 0)
+diff --git a/meson.build b/meson.build
+index 147097c..0ab9377 100644
+--- a/meson.build
++++ b/meson.build
+@@ -752,7 +752,7 @@ if 'objc' in all_languages
+   # Note sanitizer flags are not applied to Objective-C sources!
+   add_project_arguments(objc.get_supported_arguments(warn_flags), native: false, language: 'objc')
+ endif
+-if host_os == 'linux'
++if host_os in ['linux', 'cosmopolitan']
+   add_project_arguments('-isystem', meson.current_source_dir() / 'linux-headers',
+                         '-isystem', 'linux-headers',
+                         language: all_languages)
+@@ -835,7 +835,7 @@ endif
+ ###############################################
+ 
+ accelerators = []
+-if get_option('kvm').allowed() and host_os == 'linux'
++if get_option('kvm').allowed() and host_os in ['linux', 'cosmopolitan']
+   accelerators += 'CONFIG_KVM'
+ endif
+ if get_option('whpx').allowed() and host_os == 'windows'
+@@ -2402,7 +2402,7 @@ endif
+ config_host_data.set('HOST_' + host_arch.to_upper(), 1)
+ 
+ kvm_targets_c = '""'
+-if get_option('kvm').allowed() and host_os == 'linux'
++if get_option('kvm').allowed() and host_os in ['linux', 'cosmopolitan']
+   kvm_targets_c = '"' + '" ,"'.join(kvm_targets) + '"'
+ endif
+ config_host_data.set('CONFIG_KVM_TARGETS', kvm_targets_c)
+diff --git a/target/i386/kvm/kvm.c b/target/i386/kvm/kvm.c
+index 8e17942..dcadc7c 100644
+--- a/target/i386/kvm/kvm.c
++++ b/target/i386/kvm/kvm.c
+@@ -6360,6 +6360,13 @@ bool kvm_has_waitpkg(void)
+ 
+ #define ARCH_REQ_XCOMP_GUEST_PERM       0x1025
+ 
++#ifdef __COSMOPOLITAN__
++#include "qemu/cosmo-linux-syscall.h"
++#define qemu_arch_prctl(code, arg) cosmo_linux_syscall3(158 /* arch_prctl */, code, arg, 0)
++#else
++#define qemu_arch_prctl(code, arg) syscall(SYS_arch_prctl, code, arg)
++#endif
++
+ void kvm_request_xsave_components(X86CPU *cpu, uint64_t mask)
+ {
+     KVMState *s = kvm_state;
+@@ -6380,7 +6387,7 @@ void kvm_request_xsave_components(X86CPU *cpu, uint64_t mask)
+ 
+     while (mask) {
+         int bit = ctz64(mask);
+-        int rc = syscall(SYS_arch_prctl, ARCH_REQ_XCOMP_GUEST_PERM, bit);
++        int rc = qemu_arch_prctl(ARCH_REQ_XCOMP_GUEST_PERM, bit);
+         if (rc) {
+             /*
+              * Older kernel version (<5.17) do not support

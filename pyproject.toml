@@ -9,7 +9,7 @@ description = "Cosmopolitan builds of qemu-img, distributed as a Python package"
 readme = "README.md"
 license = {file = "LICENSE"}
 authors = [
-    {name = "cosmo-qemu-img contributors"}
+    {name = "cosmo-qemu contributors"}
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -29,9 +29,9 @@ requires-python = ">=3.8"
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/bjia56/cosmo-qemu-img"
-Repository = "https://github.com/bjia56/cosmo-qemu-img"
-Issues = "https://github.com/bjia56/cosmo-qemu-img/issues"
+Homepage = "https://github.com/bjia56/cosmo-qemu"
+Repository = "https://github.com/bjia56/cosmo-qemu"
+Issues = "https://github.com/bjia56/cosmo-qemu/issues"
 
 [project.scripts]
 cosmo-qemu-img = "cosmo_qemu_img.__main__:main"

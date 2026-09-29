@@ -1,4 +1,13 @@
-# cosmo-qemu-img
+# cosmo-qemu
+
+[QEMU](https://www.qemu.org/) built with [Cosmopolitan libc](https://github.com/jart/cosmopolitan), so a
+single executable runs on Linux, macOS and Windows.
+
+This repository currently builds `qemu-img` and distributes it as the `cosmo-qemu-img` Python package.
+Work on the system emulators (TCG, plus KVM on Linux) is in progress; the Cosmopolitan-specific changes
+for it already live in [`patches/`](patches).
+
+## cosmo-qemu-img
 
 Cross-platform `qemu-img` command built with Cosmopolitan libc, distributed as a Python package.
 
