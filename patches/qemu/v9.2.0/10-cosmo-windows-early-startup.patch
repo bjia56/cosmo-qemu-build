@@ -1,0 +1,36 @@
+diff --git a/monitor/monitor.c b/monitor/monitor.c
+index 56786c0..8aa8fdd 100644
+--- a/monitor/monitor.c
++++ b/monitor/monitor.c
+@@ -77,6 +77,14 @@ Monitor *monitor_cur(void)
+ {
+     Monitor *mon;
+ 
++    if (!coroutine_mon) {
++        /*
++         * Before monitor_init_globals(): the lock is not initialized yet
++         * either. Early messages (error_report() and friends) end up here.
++         */
++        return NULL;
++    }
++
+     qemu_mutex_lock(&monitor_lock);
+     mon = g_hash_table_lookup(coroutine_mon, qemu_coroutine_self());
+     qemu_mutex_unlock(&monitor_lock);
+diff --git a/os-posix.c b/os-posix.c
+index 43f9a43..ba7a773 100644
+--- a/os-posix.c
++++ b/os-posix.c
+@@ -262,6 +262,12 @@ void os_setup_limits(void)
+     struct rlimit nofile;
+ 
+     if (getrlimit(RLIMIT_NOFILE, &nofile) < 0) {
++#ifdef __COSMOPOLITAN__
++        if (errno == EINVAL) {
++            /* Windows has no such limit and cosmopolitan reports EINVAL */
++            return;
++        }
++#endif
+         warn_report("unable to query NOFILE limit: %s", strerror(errno));
+         return;
+     }
