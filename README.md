@@ -67,19 +67,28 @@ Linux wheels ship a native ELF for the architecture. Optional sandboxing with
 ## Building from Source
 
 Requires [cosmocc](https://cosmo.zip/pub/cosmocc/), plus `git`, `curl`, `make`, `patch`,
-`zip`, `ninja`, `pkg-config`, `meson` and `qemu-user-static` (to run aarch64 configure-time
-probes):
+`zip`, `bzip2`, `ninja`, `pkg-config`, `meson`, `qemu-user-static` (to run aarch64 configure-time
+probes) and the Linux kernel headers for each host architecture (`linux-libc-dev` and
+`linux-libc-dev-arm64-cross` on Debian/Ubuntu):
 
 ```bash
-./scripts/build_qemu_img_com.sh
+./scripts/build.sh
 ./scripts/smoke_test.sh "sh src/cosmo_qemu_img/data/qemu-img.com"
+./scripts/smoke_test_system.sh "sh out/qemu-system-x86_64.com" x86_64
 pip install -e .
 ```
 
-The build compiles zlib, pcre2, libffi and glib for each architecture into a static
-sysroot, then builds `qemu-img` from a tagged QEMU release and links both architectures
-with `apelink`. Cosmopolitan-specific changes to glib and QEMU are in [`patches/`](patches).
-Platform wheels and an sdist are produced by `./scripts/build_wheels.sh`.
+The build compiles zlib, pcre2, libffi, glib and pixman for each architecture into a static
+sysroot, then builds `qemu-img` and the system emulators from a tagged QEMU release and links
+both architectures with `apelink`. Cosmopolitan-specific changes to glib and QEMU are in
+[`patches/`](patches). Platform wheels and an sdist are produced by `./scripts/build_wheels.sh`.
+
+`qemu-img` goes to `src/cosmo_qemu_img/data/qemu-img.com`. The system emulators
+(`qemu-system-x86_64` and `qemu-system-aarch64`) go to `out/qemu-system-<guest>.com`, each with
+its firmware embedded, and are not part of the Python package yet. They compile in KVM (used
+on Linux when the guest architecture matches the host and `/dev/kvm` is usable) and TCG;
+pick between them at run time with `-machine accel=kvm:tcg`. Set `SYSTEM_TARGETS=` (empty)
+to build only `qemu-img`, or `ARCHES=x86_64` to build for one host architecture.
 
 ## License
 

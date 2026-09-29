@@ -6,7 +6,7 @@
 # produced by assimilate, plus the pledge sandbox helper.
 #
 # Requirements:
-#   - src/cosmo_qemu_img/data/qemu-img.com (see build_qemu_img_com.sh)
+#   - src/cosmo_qemu_img/data/qemu-img.com (see build.sh)
 #   - python3 with the `build` and `wheel` packages
 #   - assimilate (from cosmocc or cosmos) in PATH, or ASSIMILATE set
 #   - PLEDGE set to the pledge binary to include it in Linux wheels (optional)

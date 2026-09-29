@@ -1,7 +1,7 @@
 # Patches
 
 Cosmopolitan-specific changes applied on top of upstream sources by
-`scripts/build_qemu_img_com.sh`. Patches are grouped by component and upstream
+`scripts/build.sh`. Patches are grouped by component and upstream
 version, and applied in filename order.
 
 ## `glib/2.82.4`
