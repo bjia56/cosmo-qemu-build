@@ -1,0 +1,512 @@
+diff --git a/meson.build b/meson.build
+index 0ab9377..ac84d95 100644
+--- a/meson.build
++++ b/meson.build
+@@ -838,7 +838,8 @@ accelerators = []
+ if get_option('kvm').allowed() and host_os in ['linux', 'cosmopolitan']
+   accelerators += 'CONFIG_KVM'
+ endif
+-if get_option('whpx').allowed() and host_os == 'windows'
++if get_option('whpx').allowed() and (host_os == 'windows' or \
++    (host_os == 'cosmopolitan' and host_machine.cpu() == 'x86_64'))
+   if get_option('whpx').enabled() and host_machine.cpu() != 'x86_64'
+     error('WHPX requires 64-bit host')
+   elif cc.has_header('winhvplatform.h', required: get_option('whpx')) and \
+diff --git a/target/i386/whpx/whpx-all.c b/target/i386/whpx/whpx-all.c
+index a6674a8..8153d28 100644
+--- a/target/i386/whpx/whpx-all.c
++++ b/target/i386/whpx/whpx-all.c
+@@ -26,7 +26,9 @@
+ #include "qapi/qapi-types-common.h"
+ #include "qapi/qapi-visit-common.h"
+ #include "migration/blocker.h"
++#ifndef __COSMOPOLITAN__
+ #include <winerror.h>
++#endif
+ 
+ #include "whpx-internal.h"
+ #include "whpx-accel-ops.h"
+@@ -244,6 +246,36 @@ struct AccelCPUState {
+ };
+ 
+ static bool whpx_allowed;
++#ifdef __COSMOPOLITAN__
++/*
++ * A cosmopolitan program reaches the WHP DLLs with cosmo_dlopen(). The entry
++ * points are called through cosmo_dltramp(), which adapts them to the System V
++ * convention used here (WINAPI is empty in the compat headers), while the
++ * callbacks handed to WinHvEmulation stay CALLBACK (Microsoft x64) because
++ * Windows is the caller.
++ */
++#include <cosmo.h>
++#include <dlfcn.h>
++
++typedef void *HMODULE;
++
++static HMODULE cosmo_load_library(const char *name)
++{
++    return IsWindows() ? cosmo_dlopen(name, RTLD_NOW) : NULL;
++}
++
++/* cosmo_dltramp() would happily wrap NULL, and callers test for NULL */
++static void *cosmo_get_proc(HMODULE lib, const char *name)
++{
++    void *fn = cosmo_dlsym(lib, name);
++    return fn ? cosmo_dltramp(fn) : NULL;
++}
++
++#define LoadLibrary(name) cosmo_load_library(name)
++#define GetProcAddress(lib, name) cosmo_get_proc(lib, name)
++#define FreeLibrary(lib) cosmo_dlclose(lib)
++#endif
++
+ static bool whp_dispatch_initialized;
+ static HMODULE hWinHvPlatform, hWinHvEmulation;
+ static uint32_t max_vcpu_index;
+@@ -315,7 +347,7 @@ static void whpx_set_xcrs(CPUState *cpu)
+     hr = whp_dispatch.WHvSetVirtualProcessorRegisters(
+         whpx->partition, cpu->cpu_index, &xcr0_name, 1, &xcr0);
+     if (FAILED(hr)) {
+-        error_report("WHPX: Failed to set register xcr0, hr=%08lx", hr);
++        error_report("WHPX: Failed to set register xcr0, hr=%08x", hr);
+     }
+ }
+ 
+@@ -340,7 +372,7 @@ static int whpx_set_tsc(CPUState *cpu)
+          */
+         hr = whp_dispatch.WHvSuspendPartitionTime(whpx->partition);
+         if (FAILED(hr)) {
+-            warn_report("WHPX: Failed to suspend partition, hr=%08lx", hr);
++            warn_report("WHPX: Failed to suspend partition, hr=%08x", hr);
+         }
+     }
+ 
+@@ -348,7 +380,7 @@ static int whpx_set_tsc(CPUState *cpu)
+     hr = whp_dispatch.WHvSetVirtualProcessorRegisters(
+         whpx->partition, cpu->cpu_index, &tsc_reg, 1, &tsc_val);
+     if (FAILED(hr)) {
+-        error_report("WHPX: Failed to set TSC, hr=%08lx", hr);
++        error_report("WHPX: Failed to set TSC, hr=%08x", hr);
+         return -1;
+     }
+ 
+@@ -546,7 +578,7 @@ static void whpx_set_registers(CPUState *cpu, int level)
+         &vcxt.values[0]);
+ 
+     if (FAILED(hr)) {
+-        error_report("WHPX: Failed to set virtual processor context, hr=%08lx",
++        error_report("WHPX: Failed to set virtual processor context, hr=%08x",
+                      hr);
+     }
+ 
+@@ -563,7 +595,7 @@ static int whpx_get_tsc(CPUState *cpu)
+     hr = whp_dispatch.WHvGetVirtualProcessorRegisters(
+         whpx->partition, cpu->cpu_index, &tsc_reg, 1, &tsc_val);
+     if (FAILED(hr)) {
+-        error_report("WHPX: Failed to get TSC, hr=%08lx", hr);
++        error_report("WHPX: Failed to get TSC, hr=%08x", hr);
+         return -1;
+     }
+ 
+@@ -587,7 +619,7 @@ static void whpx_get_xcrs(CPUState *cpu)
+     hr = whp_dispatch.WHvGetVirtualProcessorRegisters(
+         whpx->partition, cpu->cpu_index, &xcr0_name, 1, &xcr0);
+     if (FAILED(hr)) {
+-        error_report("WHPX: Failed to get register xcr0, hr=%08lx", hr);
++        error_report("WHPX: Failed to get register xcr0, hr=%08x", hr);
+         return;
+     }
+ 
+@@ -620,7 +652,7 @@ static void whpx_get_registers(CPUState *cpu)
+         RTL_NUMBER_OF(whpx_register_names),
+         &vcxt.values[0]);
+     if (FAILED(hr)) {
+-        error_report("WHPX: Failed to get virtual processor context, hr=%08lx",
++        error_report("WHPX: Failed to get virtual processor context, hr=%08x",
+                      hr);
+     }
+ 
+@@ -811,7 +843,7 @@ static HRESULT CALLBACK whpx_emu_getreg_callback(
+         RegisterValues);
+     if (FAILED(hr)) {
+         error_report("WHPX: Failed to get virtual processor registers,"
+-                     " hr=%08lx", hr);
++                     " hr=%08x", hr);
+     }
+ 
+     return hr;
+@@ -833,7 +865,7 @@ static HRESULT CALLBACK whpx_emu_setreg_callback(
+         RegisterValues);
+     if (FAILED(hr)) {
+         error_report("WHPX: Failed to set virtual processor registers,"
+-                     " hr=%08lx", hr);
++                     " hr=%08x", hr);
+     }
+ 
+     /*
+@@ -860,7 +892,7 @@ static HRESULT CALLBACK whpx_emu_translate_callback(
+     hr = whp_dispatch.WHvTranslateGva(whpx->partition, cpu->cpu_index,
+                                       Gva, TranslateFlags, &res, Gpa);
+     if (FAILED(hr)) {
+-        error_report("WHPX: Failed to translate GVA, hr=%08lx", hr);
++        error_report("WHPX: Failed to translate GVA, hr=%08x", hr);
+     } else {
+         *TranslationResult = res.ResultCode;
+     }
+@@ -888,7 +920,7 @@ static int whpx_handle_mmio(CPUState *cpu, WHV_MEMORY_ACCESS_CONTEXT *ctx)
+         &vcpu->exit_ctx.VpContext, ctx,
+         &emu_status);
+     if (FAILED(hr)) {
+-        error_report("WHPX: Failed to parse MMIO access, hr=%08lx", hr);
++        error_report("WHPX: Failed to parse MMIO access, hr=%08x", hr);
+         return -1;
+     }
+ 
+@@ -913,7 +945,7 @@ static int whpx_handle_portio(CPUState *cpu,
+         &vcpu->exit_ctx.VpContext, ctx,
+         &emu_status);
+     if (FAILED(hr)) {
+-        error_report("WHPX: Failed to parse PortIO access, hr=%08lx", hr);
++        error_report("WHPX: Failed to parse PortIO access, hr=%08x", hr);
+         return -1;
+     }
+ 
+@@ -986,7 +1018,7 @@ static HRESULT whpx_vcpu_configure_single_stepping(CPUState *cpu,
+         &reg_value);
+ 
+     if (FAILED(hr)) {
+-        error_report("WHPX: Failed to get rflags, hr=%08lx", hr);
++        error_report("WHPX: Failed to get rflags, hr=%08x", hr);
+         return hr;
+     }
+ 
+@@ -1014,7 +1046,7 @@ static HRESULT whpx_vcpu_configure_single_stepping(CPUState *cpu,
+ 
+     if (FAILED(hr)) {
+         error_report("WHPX: Failed to set rflags,"
+-            " hr=%08lx",
++            " hr=%08x",
+             hr);
+         return hr;
+     }
+@@ -1034,7 +1066,7 @@ static HRESULT whpx_vcpu_configure_single_stepping(CPUState *cpu,
+ 
+     if (FAILED(hr)) {
+         error_report("WHPX: Failed to set InterruptState,"
+-            " hr=%08lx",
++            " hr=%08x",
+             hr);
+         return hr;
+     }
+@@ -1057,7 +1089,7 @@ static HRESULT whpx_vcpu_configure_single_stepping(CPUState *cpu,
+ 
+         if (FAILED(hr)) {
+             error_report("WHPX: Failed to get pending debug exceptions,"
+-                         "hr=%08lx", hr);
++                         "hr=%08x", hr);
+             return hr;
+         }
+ 
+@@ -1073,7 +1105,7 @@ static HRESULT whpx_vcpu_configure_single_stepping(CPUState *cpu,
+ 
+             if (FAILED(hr)) {
+                 error_report("WHPX: Failed to clear pending debug exceptions,"
+-                             "hr=%08lx", hr);
++                             "hr=%08x", hr);
+              return hr;
+             }
+         }
+@@ -1375,7 +1407,7 @@ static int whpx_first_vcpu_starting(CPUState *cpu)
+     hr = whpx_set_exception_exit_bitmap(exception_mask);
+     if (!SUCCEEDED(hr)) {
+         error_report("WHPX: Failed to update exception exit mask,"
+-                     "hr=%08lx.", hr);
++                     "hr=%08x.", hr);
+         return 1;
+     }
+ 
+@@ -1425,7 +1457,7 @@ static vaddr whpx_vcpu_get_pc(CPUState *cpu, bool exit_context_valid)
+             &reg_value);
+ 
+         if (FAILED(hr)) {
+-            error_report("WHPX: Failed to get PC, hr=%08lx", hr);
++            error_report("WHPX: Failed to get PC, hr=%08x", hr);
+             return 0;
+         }
+ 
+@@ -1567,7 +1599,7 @@ static void whpx_vcpu_pre_run(CPUState *cpu)
+             reg_names, reg_count, reg_values);
+         if (FAILED(hr)) {
+             error_report("WHPX: Failed to set interrupt state registers,"
+-                         " hr=%08lx", hr);
++                         " hr=%08x", hr);
+         }
+     }
+ 
+@@ -1697,7 +1729,7 @@ static int whpx_vcpu_run(CPUState *cpu)
+             1UL << WHvX64ExceptionTypeDebugTrapOrFault);
+         if (!SUCCEEDED(hr)) {
+             error_report("WHPX: Failed to update exception exit mask, "
+-                         "hr=%08lx.", hr);
++                         "hr=%08x.", hr);
+             return 1;
+         }
+ 
+@@ -1737,7 +1769,7 @@ static int whpx_vcpu_run(CPUState *cpu)
+ 
+         if (FAILED(hr)) {
+             error_report("WHPX: Failed to exec a virtual processor,"
+-                         " hr=%08lx", hr);
++                         " hr=%08x", hr);
+             ret = -1;
+             break;
+         }
+@@ -1821,7 +1853,7 @@ static int whpx_vcpu_run(CPUState *cpu)
+                 hr = whp_dispatch.WHvRequestInterrupt(whpx->partition,
+                         &ipi, sizeof(ipi));
+                 if (FAILED(hr)) {
+-                    error_report("WHPX: Failed to request interrupt  hr=%08lx",
++                    error_report("WHPX: Failed to request interrupt  hr=%08x",
+                         hr);
+                 }
+ 
+@@ -1864,7 +1896,7 @@ static int whpx_vcpu_run(CPUState *cpu)
+                         &ipi, sizeof(ipi));
+                 if (FAILED(hr)) {
+                     error_report(
+-                        "WHPX: Failed to request SIPI for %d,  hr=%08lx",
++                        "WHPX: Failed to request SIPI for %d,  hr=%08x",
+                         i, hr);
+                 }
+             }
+@@ -1915,7 +1947,7 @@ static int whpx_vcpu_run(CPUState *cpu)
+ 
+             if (FAILED(hr)) {
+                 error_report("WHPX: Failed to set MsrAccess state "
+-                             " registers, hr=%08lx", hr);
++                             " registers, hr=%08x", hr);
+             }
+             ret = 0;
+             break;
+@@ -1984,7 +2016,7 @@ static int whpx_vcpu_run(CPUState *cpu)
+ 
+             if (FAILED(hr)) {
+                 error_report("WHPX: Failed to set CpuidAccess state registers,"
+-                             " hr=%08lx", hr);
++                             " hr=%08x", hr);
+             }
+             ret = 0;
+             break;
+@@ -2169,7 +2201,7 @@ int whpx_init_vcpu(CPUState *cpu)
+         &vcpu->emulator);
+     if (FAILED(hr)) {
+         error_report("WHPX: Failed to setup instruction completion support,"
+-                     " hr=%08lx", hr);
++                     " hr=%08x", hr);
+         ret = -EINVAL;
+         goto error;
+     }
+@@ -2178,7 +2210,7 @@ int whpx_init_vcpu(CPUState *cpu)
+         whpx->partition, cpu->cpu_index, 0);
+     if (FAILED(hr)) {
+         error_report("WHPX: Failed to create a virtual processor,"
+-                     " hr=%08lx", hr);
++                     " hr=%08x", hr);
+         whp_dispatch.WHvEmulatorDestroyEmulator(vcpu->emulator);
+         ret = -EINVAL;
+         goto error;
+@@ -2196,7 +2228,7 @@ int whpx_init_vcpu(CPUState *cpu)
+                 NULL);
+         if (hr != WHV_E_UNKNOWN_CAPABILITY) {
+             if (FAILED(hr)) {
+-                printf("WHPX: Failed to query tsc frequency, hr=0x%08lx\n", hr);
++                printf("WHPX: Failed to query tsc frequency, hr=0x%08x\n", hr);
+             } else {
+                 env->tsc_khz = freq / 1000; /* Hz to KHz */
+             }
+@@ -2208,7 +2240,7 @@ int whpx_init_vcpu(CPUState *cpu)
+         WHvCapabilityCodeInterruptClockFrequency, &freq, sizeof(freq), NULL);
+     if (hr != WHV_E_UNKNOWN_CAPABILITY) {
+         if (FAILED(hr)) {
+-            printf("WHPX: Failed to query apic bus frequency hr=0x%08lx\n", hr);
++            printf("WHPX: Failed to query apic bus frequency hr=0x%08x\n", hr);
+         } else {
+             env->apic_bus_freq = freq;
+         }
+@@ -2228,7 +2260,7 @@ int whpx_init_vcpu(CPUState *cpu)
+                 RTL_NUMBER_OF(cpuidExitList) * sizeof(UINT32));
+ 
+         if (FAILED(hr)) {
+-            error_report("WHPX: Failed to set partition CpuidExitList hr=%08lx",
++            error_report("WHPX: Failed to set partition CpuidExitList hr=%08x",
+                         hr);
+             ret = -EINVAL;
+             goto error;
+@@ -2328,7 +2360,7 @@ static void whpx_update_mapping(hwaddr start_pa, ram_addr_t size,
+ 
+     if (FAILED(hr)) {
+         error_report("WHPX: Failed to %s GPA range '%s' PA:%p, Size:%p bytes,"
+-                     " Host:%p, hr=%08lx",
++                     " Host:%p, hr=%08x",
+                      (add ? "MAP" : "UNMAP"), name,
+                      (void *)(uintptr_t)start_pa, (void *)size, host_va, hr);
+     }
+@@ -2540,7 +2572,7 @@ static int whpx_accel_init(MachineState *ms)
+         WHvCapabilityCodeHypervisorPresent, &whpx_cap,
+         sizeof(whpx_cap), &whpx_cap_size);
+     if (FAILED(hr) || !whpx_cap.HypervisorPresent) {
+-        error_report("WHPX: No accelerator found, hr=%08lx", hr);
++        error_report("WHPX: No accelerator found, hr=%08x", hr);
+         ret = -ENOSPC;
+         goto error;
+     }
+@@ -2548,14 +2580,14 @@ static int whpx_accel_init(MachineState *ms)
+     hr = whp_dispatch.WHvGetCapability(
+         WHvCapabilityCodeFeatures, &features, sizeof(features), NULL);
+     if (FAILED(hr)) {
+-        error_report("WHPX: Failed to query capabilities, hr=%08lx", hr);
++        error_report("WHPX: Failed to query capabilities, hr=%08x", hr);
+         ret = -EINVAL;
+         goto error;
+     }
+ 
+     hr = whp_dispatch.WHvCreatePartition(&whpx->partition);
+     if (FAILED(hr)) {
+-        error_report("WHPX: Failed to create partition, hr=%08lx", hr);
++        error_report("WHPX: Failed to create partition, hr=%08x", hr);
+         ret = -EINVAL;
+         goto error;
+     }
+@@ -2576,7 +2608,7 @@ static int whpx_accel_init(MachineState *ms)
+      * specific error code.
+      */
+     if (FAILED(hr) && hr != WHV_E_UNKNOWN_PROPERTY) {
+-        error_report("WHPX: Failed to query XSAVE capability, hr=%08lx", hr);
++        error_report("WHPX: Failed to query XSAVE capability, hr=%08x", hr);
+     }
+ 
+     if (!whpx_has_xsave()) {
+@@ -2593,7 +2625,7 @@ static int whpx_accel_init(MachineState *ms)
+ 
+     if (FAILED(hr)) {
+         error_report("WHPX: Failed to set partition processor count to %u,"
+-                     " hr=%08lx", prop.ProcessorCount, hr);
++                     " hr=%08x", prop.ProcessorCount, hr);
+         ret = -EINVAL;
+         goto error;
+     }
+@@ -2621,7 +2653,7 @@ static int whpx_accel_init(MachineState *ms)
+             &mode,
+             sizeof(mode));
+         if (FAILED(hr)) {
+-            error_report("WHPX: Failed to enable kernel irqchip hr=%08lx", hr);
++            error_report("WHPX: Failed to enable kernel irqchip hr=%08x", hr);
+             if (whpx->kernel_irqchip_required) {
+                 error_report("WHPX: kernel irqchip requested, but unavailable");
+                 ret = -EINVAL;
+@@ -2647,7 +2679,7 @@ static int whpx_accel_init(MachineState *ms)
+             &prop,
+             sizeof(WHV_PARTITION_PROPERTY));
+     if (FAILED(hr)) {
+-        error_report("WHPX: Failed to enable MSR & CPUIDexit, hr=%08lx", hr);
++        error_report("WHPX: Failed to enable MSR & CPUIDexit, hr=%08x", hr);
+         ret = -EINVAL;
+         goto error;
+     }
+@@ -2659,7 +2691,7 @@ static int whpx_accel_init(MachineState *ms)
+         RTL_NUMBER_OF(cpuidExitList) * sizeof(UINT32));
+ 
+     if (FAILED(hr)) {
+-        error_report("WHPX: Failed to set partition CpuidExitList hr=%08lx",
++        error_report("WHPX: Failed to set partition CpuidExitList hr=%08x",
+                      hr);
+         ret = -EINVAL;
+         goto error;
+@@ -2673,14 +2705,14 @@ static int whpx_accel_init(MachineState *ms)
+     hr = whpx_set_exception_exit_bitmap(0);
+ 
+     if (FAILED(hr)) {
+-        error_report("WHPX: Failed to set exception exit bitmap, hr=%08lx", hr);
++        error_report("WHPX: Failed to set exception exit bitmap, hr=%08x", hr);
+         ret = -EINVAL;
+         goto error;
+     }
+ 
+     hr = whp_dispatch.WHvSetupPartition(whpx->partition);
+     if (FAILED(hr)) {
+-        error_report("WHPX: Failed to setup partition, hr=%08lx", hr);
++        error_report("WHPX: Failed to setup partition, hr=%08x", hr);
+         ret = -EINVAL;
+         goto error;
+     }
+@@ -2750,6 +2782,13 @@ bool init_whp_dispatch(void)
+         return true;
+     }
+ 
++#ifdef __COSMOPOLITAN__
++    if (!IsWindows()) {
++        error_report("WHPX is only available when running on Windows");
++        return false;
++    }
++#endif
++
+     if (!load_whp_dispatch_fns(&hWinHvPlatform, WINHV_PLATFORM_FNS_DEFAULT)) {
+         goto error;
+     }
+diff --git a/target/i386/whpx/whpx-apic.c b/target/i386/whpx/whpx-apic.c
+index 7e14ded..ad76aa5 100644
+--- a/target/i386/whpx/whpx-apic.c
++++ b/target/i386/whpx/whpx-apic.c
+@@ -109,7 +109,7 @@ static void whpx_put_apic_base(CPUState *cpu, uint64_t val)
+              &reg_value);
+ 
+     if (FAILED(hr)) {
+-        error_report("WHPX: Failed to set MSR APIC base, hr=%08lx", hr);
++        error_report("WHPX: Failed to set MSR APIC base, hr=%08x", hr);
+     }
+ }
+ 
+@@ -144,7 +144,7 @@ static void whpx_apic_put(CPUState *cs, run_on_cpu_data data)
+         sizeof(kapic));
+     if (FAILED(hr)) {
+         fprintf(stderr,
+-            "WHvSetVirtualProcessorInterruptControllerState failed: %08lx\n",
++            "WHvSetVirtualProcessorInterruptControllerState failed: %08x\n",
+              hr);
+ 
+         abort();
+@@ -165,7 +165,7 @@ void whpx_apic_get(DeviceState *dev)
+         NULL);
+     if (FAILED(hr)) {
+         fprintf(stderr,
+-            "WHvSetVirtualProcessorInterruptControllerState failed: %08lx\n",
++            "WHvSetVirtualProcessorInterruptControllerState failed: %08x\n",
+             hr);
+ 
+         abort();
+@@ -210,7 +210,7 @@ static void whpx_send_msi(MSIMessage *msg)
+                      &interrupt, sizeof(interrupt));
+     if (FAILED(hr)) {
+         fprintf(stderr, "whpx: injection failed, MSI (%llx, %x) delivery: %d, "
+-                "dest_mode: %d, trigger mode: %d, vector: %d, lost (%08lx)\n",
++                "dest_mode: %d, trigger mode: %d, vector: %d, lost (%08x)\n",
+                 addr, data, delivery, dest_mode, trigger_mode, vector, hr);
+     }
+ }
+diff --git a/target/i386/whpx/whpx-internal.h b/target/i386/whpx/whpx-internal.h
+index 6633e9c..72c4984 100644
+--- a/target/i386/whpx/whpx-internal.h
++++ b/target/i386/whpx/whpx-internal.h
+@@ -1,7 +1,12 @@
+ #ifndef TARGET_I386_WHPX_INTERNAL_H
+ #define TARGET_I386_WHPX_INTERNAL_H
+ 
++#ifdef __COSMOPOLITAN__
++/* base types only; see the compat headers staged by the build */
++#include <minwindef.h>
++#else
+ #include <windows.h>
++#endif
+ #include <winhvplatform.h>
+ #include <winhvemulation.h>
+ 

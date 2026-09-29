@@ -26,6 +26,8 @@
 #   - git, curl, make, patch, zip, bzip2, ninja, python3, meson (>= 1.5), pkg-config
 #   - qemu-aarch64-static, to run aarch64 configure-time probes
 #     (or set EXE_WRAPPER_aarch64 to another wrapper)
+#   - the mingw-w64 headers (mingw-w64-common on Debian/Ubuntu), for QEMU's WHPX
+#     code (or point WHP_HEADERS at a directory containing winhvplatform.h)
 #   - Linux kernel headers for each host architecture, for QEMU's KVM code:
 #     linux-libc-dev (x86_64) and linux-libc-dev-arm64-cross (aarch64), or point
 #     KERNEL_HEADERS_<arch> at a directory containing linux/, asm/ and asm-generic/
@@ -298,6 +300,30 @@ stage_kernel_headers() {
     cp -r "${root}/asm-generic/." "${S}/include/asm-generic/"
 }
 
+# stage_whp_headers <sysroot>
+#
+# The Windows Hypervisor Platform headers (winhvplatform.h, ...) are part of
+# the mingw-w64 project (ZPL-2.1). They only need a few base Windows types,
+# which the headers in compat/whp provide instead of a full Windows SDK. They
+# get their own directory, so no generic Windows header name is visible to
+# QEMU's or glib's configure probes.
+stage_whp_headers() {
+    local S=$1 dir="" cand
+    for cand in "${WHP_HEADERS:-}" /usr/share/mingw-w64/include /usr/x86_64-w64-mingw32/include; do
+        if [ -n "${cand}" ] && [ -f "${cand}/winhvplatform.h" ]; then
+            dir="${cand}"
+            break
+        fi
+    done
+    [ -n "${dir}" ] || die "WHP headers not found. Install mingw-w64-common (mingw-w64 headers)
+or set WHP_HEADERS to a directory containing winhvplatform.h, winhvplatformdefs.h
+and winhvemulation.h"
+    echo "  staging WHP headers from ${dir}..."
+    mkdir -p "${S}/include/whp"
+    cp "${PROJECT_ROOT}"/compat/whp/*.h "${S}/include/whp/"
+    cp "${dir}/winhvplatform.h" "${dir}/winhvplatformdefs.h" "${dir}/winhvemulation.h" "${S}/include/whp/"
+}
+
 build_deps() {
     local arch=$1 S=$2 B=$3
     local cc="${arch}-cosmo-cc" ar="${arch}-cosmo-ar" ranlib="${arch}-cosmo-ranlib"
@@ -382,6 +408,10 @@ EOF
             -Dopenmp=disabled -Dtimers=false -Dgnuplot=false
         run_logged "${arch}-pixman-build" ninja -C "${B}/pixman" -j"${JOBS}" install
         stage_kernel_headers "${arch}" "${S}"
+        # WHPX only exists for x86_64 guests on x86_64 (Windows) hosts
+        if [ "${arch}" = "x86_64" ] && [[ " ${SYSTEM_TARGETS} " == *" x86_64 "* ]]; then
+            stage_whp_headers "${S}"
+        fi
     fi
 }
 
@@ -463,7 +493,14 @@ build_qemu() {
             targets+="${guest}-softmmu,"
             [ "${guest}" = "${arch}" ] && kvm_flag="--enable-kvm"
         done
-        system_flags=(--target-list="${targets%,}" ${kvm_flag})
+        # WHPX (Windows Hypervisor Platform, loaded with cosmo_dlopen at run
+        # time on Windows) for x86_64 guests on the x86_64 host slice
+        local whpx_flag=""
+        if [ "${arch}" = "x86_64" ] && [[ " ${SYSTEM_TARGETS} " == *" x86_64 "* ]]; then
+            whpx_flag="--enable-whpx"
+            extra_cflags="${extra_cflags} -I${S}/include/whp"
+        fi
+        system_flags=(--target-list="${targets%,}" ${kvm_flag} ${whpx_flag})
     else
         system_flags=(--disable-system)
     fi
@@ -607,6 +644,14 @@ write_notices() {
             if [ -f "${file}" ]; then cat "${file}"; else echo "(license file not found: ${file##*/})"; fi
         done
         if [ -n "${SYSTEM_TARGETS}" ]; then
+            echo ""
+            echo "================================================================"
+            echo "mingw-w64 Windows Hypervisor Platform headers (build time only)"
+            echo "================================================================"
+            echo "The qemu-system-x86_64 build for x86_64 hosts is compiled against the"
+            echo "winhvplatform.h, winhvplatformdefs.h and winhvemulation.h headers of the"
+            echo "mingw-w64 project (ZPL-2.1, https://www.mingw-w64.org/), for the type and"
+            echo "constant definitions of the WHPX accelerator."
             echo ""
             echo "================================================================"
             echo "Firmware embedded in the system emulators"

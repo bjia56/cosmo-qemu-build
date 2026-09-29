@@ -66,7 +66,14 @@ accels=$($QEMU -accel help)
 echo "$accels" | grep -q '^tcg$' || fail "-accel help lists tcg"
 if [ "$host_arch" = "$GUEST" ]; then
     echo "$accels" | grep -q '^kvm$' || fail "-accel help lists kvm (host arch matches guest)"
-    pass "-accel help lists tcg and kvm"
+    if [ "$GUEST" = "x86_64" ]; then
+        # WHPX is compiled into the x86_64 slice everywhere and only works on
+        # Windows; elsewhere selecting it must fail cleanly
+        echo "$accels" | grep -q '^whpx$' || fail "-accel help lists whpx (x86_64 guest on x86_64 host)"
+        pass "-accel help lists tcg, kvm and whpx"
+    else
+        pass "-accel help lists tcg and kvm"
+    fi
 else
     pass "-accel help lists tcg (no KVM expected: host $host_arch, guest $GUEST)"
 fi
@@ -91,6 +98,17 @@ x86_64)
     run_guest "COSMO-X86-BOOT-OK" -machine pc,accel=kvm:tcg -drive format=raw,file=boot.img,if=floppy \
         || fail "boot sector with kvm:tcg fallback"
     pass "boot sector with accel=kvm:tcg (KVM or fallback)"
+
+    # WHPX is loaded with cosmo_dlopen and only works on Windows; on the
+    # Unix hosts this script runs on, asking for it has to fail cleanly
+    if [ "$host_arch" = "x86_64" ]; then
+        if $QEMU -machine pc -accel whpx -display none -monitor none -parallel none -S > out.txt 2>&1; then
+            fail "-accel whpx must fail on a non-Windows host"
+        fi
+        grep -a -q 'only available when running on Windows' out.txt \
+            || fail "-accel whpx reports a clear error on a non-Windows host"
+        pass "-accel whpx fails cleanly on a non-Windows host"
+    fi
 
     if [ "$host_arch" = "x86_64" ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
         run_guest "COSMO-X86-BOOT-OK" -machine pc -accel kvm -drive format=raw,file=boot.img,if=floppy \
