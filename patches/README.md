@@ -27,8 +27,9 @@ version, and applied in filename order.
 | `09-cosmo-enable-whpx` | WHPX for x86_64 guests on the x86_64 host slice. `LoadLibrary`/`GetProcAddress` become `cosmo_dlopen`/`cosmo_dlsym` + `cosmo_dltramp` (entry points are called through System V trampolines, emulator callbacks stay Microsoft x64 `CALLBACK`), the load is gated on `IsWindows()`, `HRESULT` constants and diagnostics are fixed for LP64, and the meson gate accepts the `cosmopolitan` host OS. The WHP headers come from mingw-w64 at build time; `compat/whp/` supplies the few base Windows types they need. |
 | `10-cosmo-windows-early-startup` | Windows' `getrlimit(RLIMIT_NOFILE)` fails with `EINVAL` under Cosmopolitan, which made `os_setup_limits()` warn before the monitor's globals exist and hit an uninitialized mutex. Skip that warning, and make `monitor_cur()` safe before `monitor_init_globals()` so any early message is printed instead of crashing. |
 | `11-cosmo-windows-ram-mmap` | On Windows, Cosmopolitan can only unmap or `MAP_FIXED`-replace whole allocations, but QEMU's RAM allocator reserves a `PROT_NONE` region, re-maps a piece of it and trims the rest (`ENOTSUP`, seen as "cannot set up guest memory"). When running on Windows, map RAM directly and unmap exactly what was mapped. Other operating systems keep the original code. |
+| `12-cosmo-crash-reports` | Call Cosmopolitan's `ShowCrashReports()` at the start of `main()`, so a crash, abort or `SIGFPE` prints registers, a backtrace and a `cosmoaddr2line` command instead of a bare "terminating on uncaught signal". |
 
-Patches `04`-`11` are only needed for the system emulators; they are harmless
+Patches `04`-`12` are only needed for the system emulators; they are harmless
 for the `qemu-img` build.
 
 ### Building system emulators

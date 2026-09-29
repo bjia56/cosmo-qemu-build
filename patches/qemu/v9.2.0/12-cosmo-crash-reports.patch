@@ -1,0 +1,27 @@
+diff --git a/system/main.c b/system/main.c
+index 9b91d21..6061b8f 100644
+--- a/system/main.c
++++ b/system/main.c
+@@ -30,6 +30,11 @@
+ #include <SDL.h>
+ #endif
+ 
++#ifdef __COSMOPOLITAN__
++/* only declared by cosmopolitan's headers under _COSMO_SOURCE */
++void ShowCrashReports(void);
++#endif
++
+ int qemu_default_main(void)
+ {
+     int status;
+@@ -44,6 +49,10 @@ int (*qemu_main)(void) = qemu_default_main;
+ 
+ int main(int argc, char **argv)
+ {
++#ifdef __COSMOPOLITAN__
++    /* print registers and a backtrace if the emulator crashes or aborts */
++    ShowCrashReports();
++#endif
+     qemu_init(argc, argv);
+     return qemu_main();
+ }
