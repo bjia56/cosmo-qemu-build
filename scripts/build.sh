@@ -288,8 +288,12 @@ stage_kernel_headers() {
     for f in ioctl types const stddef posix_types; do
         cp "${root}/linux/${f}.h" "${S}/include/linux/"
     done
-    for f in ioctl types posix_types posix_types_64 bitsperlong byteorder swab; do
-        [ -f "${asm}/${f}.h" ] && cp "${asm}/${f}.h" "${S}/include/asm/"
+    # QEMU's vendored asm/kvm.h includes others (asm/ptrace.h on arm64, ...)
+    for f in "${asm}"/*.h; do
+        case "$(basename "$f")" in
+            kvm*.h) ;;
+            *) cp "$f" "${S}/include/asm/" ;;
+        esac
     done
     cp -r "${root}/asm-generic/." "${S}/include/asm-generic/"
 }
