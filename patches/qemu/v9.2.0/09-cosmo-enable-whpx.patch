@@ -454,7 +454,7 @@ index a6674a8..8153d28 100644
          goto error;
      }
 diff --git a/target/i386/whpx/whpx-apic.c b/target/i386/whpx/whpx-apic.c
-index 7e14ded..ad76aa5 100644
+index 7e14ded..5372bfe 100644
 --- a/target/i386/whpx/whpx-apic.c
 +++ b/target/i386/whpx/whpx-apic.c
 @@ -109,7 +109,7 @@ static void whpx_put_apic_base(CPUState *cpu, uint64_t val)
@@ -484,17 +484,20 @@ index 7e14ded..ad76aa5 100644
              hr);
  
          abort();
-@@ -210,7 +210,7 @@ static void whpx_send_msi(MSIMessage *msg)
+@@ -210,8 +210,9 @@ static void whpx_send_msi(MSIMessage *msg)
                       &interrupt, sizeof(interrupt));
      if (FAILED(hr)) {
          fprintf(stderr, "whpx: injection failed, MSI (%llx, %x) delivery: %d, "
 -                "dest_mode: %d, trigger mode: %d, vector: %d, lost (%08lx)\n",
+-                addr, data, delivery, dest_mode, trigger_mode, vector, hr);
 +                "dest_mode: %d, trigger mode: %d, vector: %d, lost (%08x)\n",
-                 addr, data, delivery, dest_mode, trigger_mode, vector, hr);
++                (unsigned long long)addr, data, delivery, dest_mode, trigger_mode,
++                vector, hr);
      }
  }
+ 
 diff --git a/target/i386/whpx/whpx-internal.h b/target/i386/whpx/whpx-internal.h
-index 6633e9c..72c4984 100644
+index 6633e9c..2627a92 100644
 --- a/target/i386/whpx/whpx-internal.h
 +++ b/target/i386/whpx/whpx-internal.h
 @@ -1,7 +1,12 @@
@@ -510,3 +513,17 @@ index 6633e9c..72c4984 100644
  #include <winhvplatform.h>
  #include <winhvemulation.h>
  
+@@ -46,10 +51,11 @@ struct whpx_state {
+ extern struct whpx_state whpx_global;
+ void whpx_apic_get(DeviceState *s);
+ 
+-#define WHV_E_UNKNOWN_CAPABILITY 0x80370300L
++/* HRESULT is 32 bits; on LP64 a "L" constant would be a positive 64-bit long */
++#define WHV_E_UNKNOWN_CAPABILITY ((HRESULT)0x80370300)
+ 
+ /* This should eventually come from the Windows SDK */
+-#define WHV_E_UNKNOWN_PROPERTY 0x80370302
++#define WHV_E_UNKNOWN_PROPERTY ((HRESULT)0x80370302)
+ 
+ #define LIST_WINHVPLATFORM_FUNCTIONS(X) \
+   X(HRESULT, WHvGetCapability, (WHV_CAPABILITY_CODE CapabilityCode, VOID* CapabilityBuffer, UINT32 CapabilityBufferSizeInBytes, UINT32* WrittenSizeInBytes)) \
