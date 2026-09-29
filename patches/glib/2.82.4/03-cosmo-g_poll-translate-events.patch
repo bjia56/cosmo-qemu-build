@@ -1,0 +1,64 @@
+diff --git a/glib/gpoll.c b/glib/gpoll.c
+index 5afc759..59a38d0 100644
+--- a/glib/gpoll.c
++++ b/glib/gpoll.c
+@@ -119,12 +119,59 @@ extern gboolean _g_main_poll_debug;
+  *
+  * Since: 2.20
+  **/
++#ifdef __COSMOPOLITAN__
++/* Cosmopolitan defines the POLL* flags as runtime values, because they
++ * differ between operating systems (notably on Windows), while the G_IO_*
++ * flags in glibconfig.h are compile-time constants. Translate at the boundary.
++ */
++static gushort
++g_poll_events_to_native (gushort events)
++{
++  return ((events & G_IO_IN) ? POLLIN : 0) |
++         ((events & G_IO_OUT) ? POLLOUT : 0) |
++         ((events & G_IO_PRI) ? POLLPRI : 0) |
++         ((events & G_IO_ERR) ? POLLERR : 0) |
++         ((events & G_IO_HUP) ? POLLHUP : 0) |
++         ((events & G_IO_NVAL) ? POLLNVAL : 0);
++}
++
++static gushort
++g_poll_events_from_native (gushort events)
++{
++  return ((events & POLLIN) ? G_IO_IN : 0) |
++         ((events & POLLOUT) ? G_IO_OUT : 0) |
++         ((events & POLLPRI) ? G_IO_PRI : 0) |
++         ((events & POLLERR) ? G_IO_ERR : 0) |
++         ((events & POLLHUP) ? G_IO_HUP : 0) |
++         ((events & POLLNVAL) ? G_IO_NVAL : 0);
++}
++#endif
++
+ gint
+ g_poll (GPollFD *fds,
+ 	guint    nfds,
+ 	gint     timeout)
+ {
++#ifdef __COSMOPOLITAN__
++  guint i;
++  gint ret;
++
++  if (POLLIN == G_IO_IN && POLLOUT == G_IO_OUT && POLLPRI == G_IO_PRI &&
++      POLLERR == G_IO_ERR && POLLHUP == G_IO_HUP && POLLNVAL == G_IO_NVAL)
++    return poll ((struct pollfd *)fds, nfds, timeout);
++
++  for (i = 0; i < nfds; i++)
++    fds[i].events = g_poll_events_to_native (fds[i].events);
++  ret = poll ((struct pollfd *)fds, nfds, timeout);
++  for (i = 0; i < nfds; i++)
++    {
++      fds[i].events = g_poll_events_from_native (fds[i].events);
++      fds[i].revents = g_poll_events_from_native (fds[i].revents);
++    }
++  return ret;
++#else
+   return poll ((struct pollfd *)fds, nfds, timeout);
++#endif
+ }
+ 
+ #else	/* !HAVE_POLL */

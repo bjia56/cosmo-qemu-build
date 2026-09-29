@@ -1,0 +1,64 @@
+diff --git a/util/qemu-timer.c b/util/qemu-timer.c
+index ffe9a3c..9f034c1 100644
+--- a/util/qemu-timer.c
++++ b/util/qemu-timer.c
+@@ -322,7 +322,59 @@ int qemu_timeout_ns_to_ms(int64_t ns)
+ /* qemu implementation of g_poll which uses a nanosecond timeout but is
+  * otherwise identical to g_poll
+  */
++#ifdef __COSMOPOLITAN__
++/*
++ * Cosmopolitan defines the POLL* flags as runtime values that differ between
++ * operating systems (notably on Windows), while G_IO_* are compile-time
++ * constants that the rest of QEMU uses in GPollFD.  Translate at the boundary.
++ */
++static gushort qemu_poll_events_to_native(gushort events)
++{
++    return ((events & G_IO_IN) ? POLLIN : 0) |
++           ((events & G_IO_OUT) ? POLLOUT : 0) |
++           ((events & G_IO_PRI) ? POLLPRI : 0) |
++           ((events & G_IO_ERR) ? POLLERR : 0) |
++           ((events & G_IO_HUP) ? POLLHUP : 0) |
++           ((events & G_IO_NVAL) ? POLLNVAL : 0);
++}
++
++static gushort qemu_poll_events_from_native(gushort events)
++{
++    return ((events & POLLIN) ? G_IO_IN : 0) |
++           ((events & POLLOUT) ? G_IO_OUT : 0) |
++           ((events & POLLPRI) ? G_IO_PRI : 0) |
++           ((events & POLLERR) ? G_IO_ERR : 0) |
++           ((events & POLLHUP) ? G_IO_HUP : 0) |
++           ((events & POLLNVAL) ? G_IO_NVAL : 0);
++}
++
++static int qemu_poll_ns_native(GPollFD *fds, guint nfds, int64_t timeout);
++
++int qemu_poll_ns(GPollFD *fds, guint nfds, int64_t timeout)
++{
++    guint i;
++    int ret;
++
++    if (POLLIN == G_IO_IN && POLLOUT == G_IO_OUT && POLLPRI == G_IO_PRI &&
++        POLLERR == G_IO_ERR && POLLHUP == G_IO_HUP && POLLNVAL == G_IO_NVAL) {
++        return qemu_poll_ns_native(fds, nfds, timeout);
++    }
++
++    for (i = 0; i < nfds; i++) {
++        fds[i].events = qemu_poll_events_to_native(fds[i].events);
++    }
++    ret = qemu_poll_ns_native(fds, nfds, timeout);
++    for (i = 0; i < nfds; i++) {
++        fds[i].events = qemu_poll_events_from_native(fds[i].events);
++        fds[i].revents = qemu_poll_events_from_native(fds[i].revents);
++    }
++    return ret;
++}
++
++static int qemu_poll_ns_native(GPollFD *fds, guint nfds, int64_t timeout)
++#else
+ int qemu_poll_ns(GPollFD *fds, guint nfds, int64_t timeout)
++#endif
+ {
+ #ifdef CONFIG_PPOLL
+     if (timeout < 0) {

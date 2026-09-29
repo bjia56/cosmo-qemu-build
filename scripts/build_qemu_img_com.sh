@@ -294,6 +294,14 @@ build_qemu_img() {
     local qb="${B}/qemu"
     mkdir -p "${qb}" && cd "${qb}"
 
+    # cosmocc's aarch64 GCC 14.1 crashes (ICE in emit_library_call_value_1)
+    # compiling qemu-io-cmds.c at -O2 unless inlining of non-inline functions
+    # is disabled.
+    local extra_cflags="-I${S}/include"
+    if [ "${arch}" = "aarch64" ]; then
+        extra_cflags="${extra_cflags} -fno-inline-functions"
+    fi
+
     # Notes on the flags:
     #  --disable-stack-protector  cosmocc constructors run before TLS is set up
     #  --with-coroutine=ucontext  the sigaltstack backend deadlocks under cosmo
@@ -302,7 +310,7 @@ build_qemu_img() {
         PKG_CONFIG_PATH="${S}/lib/pkgconfig" PKG_CONFIG_LIBDIR="${S}/lib/pkgconfig" \
         "${SRC_DIR}/qemu/configure" \
         --cross-prefix="${arch}-cosmo-" --cpu="${arch}" --host-cc=cc \
-        --extra-cflags="-I${S}/include" --extra-ldflags="-L${S}/lib" \
+        --extra-cflags="${extra_cflags}" --extra-ldflags="-L${S}/lib" \
         --disable-system --disable-user --disable-docs --disable-guest-agent \
         --enable-tools --disable-werror \
         --disable-stack-protector --with-coroutine=ucontext \
