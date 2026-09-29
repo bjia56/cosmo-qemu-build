@@ -1,0 +1,66 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      test_pypi:
+        description: 'Publish to Test PyPI instead of production'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  # Call the build workflow to build wheels
+  build:
+    uses: ./.github/workflows/build.yml
+
+  # Publish the wheels to PyPI
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/cosmo-qemu-img
+    permissions:
+      id-token: write  # For trusted publishing
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.11'
+
+      - name: Install twine
+        run: pip install twine
+
+      - name: Download wheel artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: wheels
+          path: dist/
+
+      - name: Download sdist artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: sdist
+          path: dist/
+
+      - name: List distribution files
+        run: ls -lh dist/
+
+      - name: Check distribution files
+        run: twine check dist/*
+
+      - name: Publish to Test PyPI
+        if: github.event.inputs.test_pypi == 'true' || github.event_name == 'workflow_dispatch'
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+
+      - name: Publish to PyPI
+        if: github.event_name == 'release' && github.event.inputs.test_pypi != 'true'
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b

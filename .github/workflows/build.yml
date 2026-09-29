@@ -1,0 +1,111 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+  workflow_call:
+
+env:
+  cosmocc_version: '4.0.2'
+
+jobs:
+  build-binary:
+    name: Build qemu-img.com
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Setup cosmocc
+        uses: bjia56/setup-cosmocc@c0097c34319baeca1b41cc857ec5c643f2f5baf6
+        with:
+          version: ${{ env.cosmocc_version }}
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config qemu-user-static zip
+          pip install meson
+
+      - name: Build qemu-img.com
+        run: ./scripts/build_qemu_img_com.sh
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: qemu-img-binary
+          path: src/cosmo_qemu_img/data/qemu-img.com
+          if-no-files-found: error
+
+      - name: Upload license artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: qemu-img-license
+          path: |
+            src/cosmo_qemu_img/data/COPYING
+            src/cosmo_qemu_img/data/THIRD_PARTY_NOTICES.txt
+          if-no-files-found: error
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: build-logs
+          path: build/logs/
+
+  build-wheels:
+    name: Build wheels
+    needs: build-binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Download binary artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: qemu-img-binary
+          path: src/cosmo_qemu_img/data/
+
+      - name: Download license artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: qemu-img-license
+          path: src/cosmo_qemu_img/data/
+
+      - name: Make binary executable
+        run: chmod +x src/cosmo_qemu_img/data/qemu-img.com
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405
+        with:
+          python-version: '3.11'
+
+      - name: Install build tools
+        run: pip install build wheel
+
+      - name: Download pledge and assimilate
+        run: |
+          wget https://cosmo.zip/pub/cosmos/v/${{ env.cosmocc_version }}/bin/pledge -O /tmp/pledge
+          chmod +x /tmp/pledge
+
+          wget https://cosmo.zip/pub/cosmos/v/${{ env.cosmocc_version }}/bin/assimilate -O /tmp/assimilate
+          chmod +x /tmp/assimilate
+
+      - name: Build wheels and sdist
+        run: |
+          ASSIMILATE=/tmp/assimilate PLEDGE=/tmp/pledge ./scripts/build_wheels.sh
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: wheels
+          path: dist/wheels/*.whl
+
+      - name: Upload sdist artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sdist
+          path: dist/*.tar.gz

@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cosmo-qemu-img"
+dynamic = ["version"]
+description = "Cosmopolitan builds of qemu-img, distributed as a Python package"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+    {name = "cosmo-qemu-img contributors"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Filesystems",
+]
+requires-python = ">=3.8"
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/bjia56/cosmo-qemu-img"
+Repository = "https://github.com/bjia56/cosmo-qemu-img"
+Issues = "https://github.com/bjia56/cosmo-qemu-img/issues"
+
+[project.scripts]
+cosmo-qemu-img = "cosmo_qemu_img.__main__:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+cosmo_qemu_img = ["data/qemu-img.*", "data/pledge", "data/COPYING", "data/THIRD_PARTY_NOTICES.txt"]
+
+[tool.setuptools.dynamic]
+version = {attr = "cosmo_qemu_img.__version__"}

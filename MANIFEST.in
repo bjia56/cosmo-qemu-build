@@ -1,0 +1,22 @@
+# Include the Cosmopolitan binary and the licenses that go with it
+include src/cosmo_qemu_img/data/qemu-img.com
+include src/cosmo_qemu_img/data/COPYING
+include src/cosmo_qemu_img/data/THIRD_PARTY_NOTICES.txt
+
+# qemu-img is GPL-2.0. Ship the exact patches and build scripts used to produce
+# the binary so the corresponding source is available with every distribution.
+recursive-include patches *.patch
+recursive-include scripts *.sh
+
+# Include license and readme
+include LICENSE
+include README.md
+
+# Exclude unnecessary files
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude .DS_Store
+prune build
+prune dist
+prune .git
+prune .github
