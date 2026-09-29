@@ -53,7 +53,10 @@ run_guest() {
     return 1
 }
 
-host_arch=$(uname -m)
+# The architecture the emulator binary itself runs as. Override it when testing
+# a slice under user-mode emulation (e.g. SMOKE_HOST_ARCH=aarch64 with
+# qemu-aarch64-static on an x86_64 machine).
+host_arch=${SMOKE_HOST_ARCH:-$(uname -m)}
 case "$host_arch" in arm64) host_arch=aarch64 ;; amd64) host_arch=x86_64 ;; esac
 
 $QEMU --version | head -n 1

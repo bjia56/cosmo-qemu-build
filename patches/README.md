@@ -24,7 +24,9 @@ version, and applied in filename order.
 | `06-cosmo-eventfd-linux-syscall` | Add `include/qemu/cosmo-linux-syscall.h` (raw Linux system calls, guarded by `IsLinux()`) and use it for a real `eventfd2` in `EventNotifier`, falling back to a pipe on other operating systems. |
 | `07-cosmo-enable-kvm` | Allow the KVM accelerator on the `cosmopolitan` host OS: meson gates, vendored `linux-headers` include path and `asm` symlink, `arch_prctl` via the raw-syscall helper, kernel-typed `VMSTATE_*` macros, and Xen emulation off by default. KVM is only usable at runtime on Linux; elsewhere `/dev/kvm` cannot be opened and QEMU falls back to the next accelerator. |
 
-Patches `04`-`07` are only needed for the system emulators; they are harmless
+| `08-cosmo-aarch64-tcg-reserve-x28` | Cosmopolitan keeps its thread-local storage base in `x28` on aarch64, so the aarch64 TCG backend must not allocate it. Without this, generated code clobbers `x28` and the next helper call crashes on a thread-local access (seen as a segfault in `rcu_read_lock()` when booting an x86 guest on an aarch64 host). |
+
+Patches `04`-`08` are only needed for the system emulators; they are harmless
 for the `qemu-img` build.
 
 ### Building system emulators
