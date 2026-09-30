@@ -454,7 +454,7 @@ index a6674a8..8153d28 100644
          goto error;
      }
 diff --git a/target/i386/whpx/whpx-apic.c b/target/i386/whpx/whpx-apic.c
-index 7e14ded..5372bfe 100644
+index 7e14ded..1c866b0 100644
 --- a/target/i386/whpx/whpx-apic.c
 +++ b/target/i386/whpx/whpx-apic.c
 @@ -109,7 +109,7 @@ static void whpx_put_apic_base(CPUState *cpu, uint64_t val)
@@ -484,7 +484,25 @@ index 7e14ded..5372bfe 100644
              hr);
  
          abort();
-@@ -210,8 +210,9 @@ static void whpx_send_msi(MSIMessage *msg)
+@@ -193,6 +193,17 @@ static void whpx_send_msi(MSIMessage *msg)
+     uint8_t trigger_mode = (data >> MSI_DATA_TRIGGER_SHIFT) & 0x1;
+     uint8_t delivery = (data >> MSI_DATA_DELIVERY_MODE_SHIFT) & 0x7;
+ 
++#ifdef __COSMOPOLITAN__
++    /*
++     * A fixed interrupt below vector 16 is not a valid x86 interrupt. WHP
++     * fails fast (0xC0000409) instead of returning an error for it when
++     * called from Cosmopolitan, so drop it here.
++     */
++    if (delivery == 0 && vector < 16) {
++        return;
++    }
++#endif
++
+     WHV_INTERRUPT_CONTROL interrupt = {
+         /* Values correspond to delivery modes */
+         .Type = delivery,
+@@ -210,8 +221,9 @@ static void whpx_send_msi(MSIMessage *msg)
                       &interrupt, sizeof(interrupt));
      if (FAILED(hr)) {
          fprintf(stderr, "whpx: injection failed, MSI (%llx, %x) delivery: %d, "

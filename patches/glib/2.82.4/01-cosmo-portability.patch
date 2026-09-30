@@ -1,3 +1,16 @@
+diff --git a/glib/glib-unix.c b/glib/glib-unix.c
+index 932c230..8b1fcaf 100644
+--- a/glib/glib-unix.c
++++ b/glib/glib-unix.c
+@@ -77,7 +77,7 @@ G_STATIC_ASSERT (G_ALIGNOF (GPid) == G_ALIGNOF (pid_t));
+  * ambiguous on this platform.
+  * On Linux, usually O_NONBLOCK == 04000 and FD_CLOEXEC == 1, but the same
+  * might not be true everywhere. */
+-G_STATIC_ASSERT (O_NONBLOCK != FD_CLOEXEC);
++/* cosmopolitan: O_NONBLOCK is not a compile-time constant */
+ 
+ G_DEFINE_QUARK (g-unix-error-quark, g_unix_error)
+ 
 diff --git a/glib/gpoll.c b/glib/gpoll.c
 index 5afc759..59a38d0 100644
 --- a/glib/gpoll.c
@@ -62,3 +75,45 @@ index 5afc759..59a38d0 100644
  }
  
  #else	/* !HAVE_POLL */
+diff --git a/meson.build b/meson.build
+index da11ddd..09bd1c1 100644
+--- a/meson.build
++++ b/meson.build
+@@ -1971,6 +1971,11 @@ poll_defines = [
+ if has_syspoll and has_systypes
+   foreach d : poll_defines
+     val = cc.compute_int(d[0], prefix: poll_includes)
++    if val < 0 and host_system == 'linux' and cc.get_define('__COSMOPOLITAN__') != ''
++      # Cosmopolitan defines these as runtime values, so they cannot be
++      # computed at build time. Use the Linux values.
++      val = d[2]
++    endif
+     glibconfig_conf.set(d[1], val)
+   endforeach
+ elif has_winsock2
+@@ -1997,15 +2002,19 @@ else
+ endif
+ 
+ inet_defines = [
+-  [ 'AF_UNIX', 'g_af_unix' ],
+-  [ 'AF_INET', 'g_af_inet' ],
+-  [ 'AF_INET6', 'g_af_inet6' ],
+-  [ 'MSG_OOB', 'g_msg_oob' ],
+-  [ 'MSG_PEEK', 'g_msg_peek' ],
+-  [ 'MSG_DONTROUTE', 'g_msg_dontroute' ],
++  [ 'AF_UNIX', 'g_af_unix', 1 ],
++  [ 'AF_INET', 'g_af_inet', 2 ],
++  [ 'AF_INET6', 'g_af_inet6', 10 ],
++  [ 'MSG_OOB', 'g_msg_oob', 1 ],
++  [ 'MSG_PEEK', 'g_msg_peek', 2 ],
++  [ 'MSG_DONTROUTE', 'g_msg_dontroute', 4 ],
+ ]
+ foreach d : inet_defines
+   val = cc.compute_int(d[0], prefix: inet_includes)
++  if val < 0 and host_system == 'linux' and cc.get_define('__COSMOPOLITAN__') != ''
++    # Cosmopolitan defines these as runtime values; use the Linux values.
++    val = d[2]
++  endif
+   glibconfig_conf.set(d[1], val)
+ endforeach
+ 

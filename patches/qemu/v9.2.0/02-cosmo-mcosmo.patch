@@ -20,6 +20,21 @@ index b1def7e..d0fe70b 100644
              (!cmd->cmd_startswith && strcmp(cmd->cmd, data))) {
              continue;
          }
+diff --git a/system/main.c b/system/main.c
+index 9b91d21..b0eef84 100644
+--- a/system/main.c
++++ b/system/main.c
+@@ -44,6 +44,10 @@ int (*qemu_main)(void) = qemu_default_main;
+ 
+ int main(int argc, char **argv)
+ {
++#ifdef __COSMOPOLITAN__
++    /* print registers and a backtrace if the emulator crashes or aborts */
++    ShowCrashReports();
++#endif
+     qemu_init(argc, argv);
+     return qemu_main();
+ }
 diff --git a/target/i386/tcg/int_helper.c b/target/i386/tcg/int_helper.c
 index 1a02e9d..0e2db8c 100644
 --- a/target/i386/tcg/int_helper.c

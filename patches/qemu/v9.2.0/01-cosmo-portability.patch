@@ -1,3 +1,83 @@
+diff --git a/configure b/configure
+index 1833637..98ce256 100755
+--- a/configure
++++ b/configure
+@@ -340,7 +340,9 @@ int main(void) { return 0; }
+ EOF
+ }
+ 
+-if check_define __linux__ ; then
++if check_define __COSMOPOLITAN__ ; then
++  host_os=cosmopolitan
++elif check_define __linux__ ; then
+   host_os=linux
+ elif check_define _WIN32 ; then
+   host_os=windows
+diff --git a/migration/qemu-file.c b/migration/qemu-file.c
+index b6d2f58..33d23a2 100644
+--- a/migration/qemu-file.c
++++ b/migration/qemu-file.c
+@@ -35,7 +35,12 @@
+ #include "io/channel-file.h"
+ 
+ #define IO_BUF_SIZE 32768
++#ifdef __COSMOPOLITAN__
++/* IOV_MAX is a runtime value on cosmopolitan; 16 is the smallest of any OS (Windows) */
++#define MAX_IOV_SIZE 16
++#else
+ #define MAX_IOV_SIZE MIN_CONST(IOV_MAX, 64)
++#endif
+ 
+ struct QEMUFile {
+     QIOChannel *ioc;
+diff --git a/net/colo.c b/net/colo.c
+index fb2c36a..780c028 100644
+--- a/net/colo.c
++++ b/net/colo.c
+@@ -17,6 +17,14 @@
+ #include "colo.h"
+ #include "util.h"
+ 
++/* IANA protocol numbers; not provided by cosmopolitan's netinet/in.h */
++#ifndef IPPROTO_ESP
++#define IPPROTO_ESP 50
++#endif
++#ifndef IPPROTO_AH
++#define IPPROTO_AH 51
++#endif
++
+ uint32_t connection_key_hash(const void *opaque)
+ {
+     const ConnectionKey *key = opaque;
+diff --git a/util/mmap-alloc.c b/util/mmap-alloc.c
+index ed14f9c..6feb3d2 100644
+--- a/util/mmap-alloc.c
++++ b/util/mmap-alloc.c
+@@ -10,7 +10,10 @@
+  * later.  See the COPYING file in the top-level directory.
+  */
+ 
+-#ifdef CONFIG_LINUX
++#ifdef __COSMOPOLITAN__
++/* cosmopolitan provides MAP_SHARED_VALIDATE as a runtime value, but no MAP_SYNC */
++#define MAP_SYNC              0x0
++#elif defined(CONFIG_LINUX)
+ #include <linux/mman.h>
+ #else  /* !CONFIG_LINUX */
+ #define MAP_SYNC              0x0
+@@ -27,8 +30,12 @@
+ 
+ #ifdef CONFIG_LINUX
+ #include <sys/vfs.h>
++#ifdef __COSMOPOLITAN__
++#define TMPFS_MAGIC           0x01021994
++#else
+ #include <linux/magic.h>
+ #endif
++#endif
+ 
+ QemuFsType qemu_fd_getfs(int fd)
+ {
 diff --git a/util/qemu-timer.c b/util/qemu-timer.c
 index ffe9a3c..9f034c1 100644
 --- a/util/qemu-timer.c

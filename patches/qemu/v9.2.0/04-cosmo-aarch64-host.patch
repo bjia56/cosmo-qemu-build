@@ -1,0 +1,95 @@
+diff --git a/include/qemu/osdep.h b/include/qemu/osdep.h
+index fdff07f..ba85535 100644
+--- a/include/qemu/osdep.h
++++ b/include/qemu/osdep.h
+@@ -811,6 +811,12 @@ static inline void qemu_thread_jit_write(void)
+ {
+     pthread_jit_write_protect_np(false);
+ }
++#elif defined(__COSMOPOLITAN__)
++/* No-ops except on Apple Silicon, where Cosmopolitan toggles the JIT pages */
++void __jit_begin(void);
++void __jit_end(void);
++static inline void qemu_thread_jit_write(void) { __jit_begin(); }
++static inline void qemu_thread_jit_execute(void) { __jit_end(); }
+ #else
+ static inline void qemu_thread_jit_write(void) {}
+ static inline void qemu_thread_jit_execute(void) {}
+diff --git a/tcg/aarch64/tcg-target.c.inc b/tcg/aarch64/tcg-target.c.inc
+index ffa8a3e..8a0db2e 100644
+--- a/tcg/aarch64/tcg-target.c.inc
++++ b/tcg/aarch64/tcg-target.c.inc
+@@ -3183,6 +3183,10 @@ static void tcg_target_init(TCGContext *s)
+     tcg_regset_set_reg(s->reserved_regs, TCG_REG_SP);
+     tcg_regset_set_reg(s->reserved_regs, TCG_REG_FP);
+     tcg_regset_set_reg(s->reserved_regs, TCG_REG_X18); /* platform register */
++#ifdef __COSMOPOLITAN__
++    /* cosmopolitan keeps its thread-local storage base in x28 on aarch64 */
++    tcg_regset_set_reg(s->reserved_regs, TCG_REG_X28);
++#endif
+     tcg_regset_set_reg(s->reserved_regs, TCG_REG_TMP0);
+     tcg_regset_set_reg(s->reserved_regs, TCG_REG_TMP1);
+     tcg_regset_set_reg(s->reserved_regs, TCG_REG_TMP2);
+diff --git a/tcg/region.c b/tcg/region.c
+index 478ec05..6309ffd 100644
+--- a/tcg/region.c
++++ b/tcg/region.c
+@@ -716,6 +716,12 @@ static int alloc_code_gen_buffer(size_t size, int splitwx, Error **errp)
+         flags |= MAP_JIT;
+     }
+ #endif
++#ifdef __COSMOPOLITAN__
++    /* MAP_JIT is a runtime value: nonzero on macOS only */
++    if (!splitwx) {
++        flags |= MAP_JIT;
++    }
++#endif
+ 
+     return alloc_code_gen_buffer_anon(size, prot, flags, errp);
+ }
+diff --git a/util/cacheflush.c b/util/cacheflush.c
+index a089061..8706a78 100644
+--- a/util/cacheflush.c
++++ b/util/cacheflush.c
+@@ -6,6 +6,9 @@
+  */
+ 
+ #include "qemu/osdep.h"
++#ifdef __COSMOPOLITAN__
++#include <cosmo.h>
++#endif
+ #include "qemu/cacheflush.h"
+ #include "qemu/cacheinfo.h"
+ #include "qemu/bitops.h"
+@@ -132,6 +135,13 @@ static void arch_cache_info(int *isize, int *dsize)
+ {
+     uint64_t ctr;
+ 
++#ifdef __COSMOPOLITAN__
++    /* Reading CTR_EL0 raises SIGILL under macOS; sizes fall back to sysconf */
++    if (!IsLinux()) {
++        return;
++    }
++#endif
++
+     /*
+      * The real cache geometry is in CCSIDR_EL1/CLIDR_EL1/CSSELR_EL1,
+      * but (at least under Linux) these are marked protected by the
+@@ -266,6 +276,17 @@ void flush_idcache_range(uintptr_t rx, uintptr_t rw, size_t len)
+     const uintptr_t dcache_lsize = qemu_dcache_linesize;
+     uintptr_t p;
+ 
++#ifdef __COSMOPOLITAN__
++    if (!IsLinux()) {
++        /* Cosmopolitan's __clear_cache() knows how to do this on macOS */
++        __builtin___clear_cache((char *)rw, (char *)(rw + len));
++        if (rx != rw) {
++            __builtin___clear_cache((char *)rx, (char *)(rx + len));
++        }
++        return;
++    }
++#endif
++
+     /*
+      * If CTR_EL0.IDC is enabled, Data cache clean to the Point of Unification
+      * is not required for instruction to data coherence.

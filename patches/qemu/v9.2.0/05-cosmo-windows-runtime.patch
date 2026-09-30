@@ -1,0 +1,175 @@
+diff --git a/block/file-posix.c b/block/file-posix.c
+index 90fa543..06e418e 100644
+--- a/block/file-posix.c
++++ b/block/file-posix.c
+@@ -1062,8 +1062,9 @@ static int raw_reconfigure_getfd(BlockDriverState *bs, int flags,
+ 
+     raw_parse_flags(flags, open_flags, has_writers);
+ 
+-#ifdef O_ASYNC
+-    /* Not all operating systems have O_ASYNC, and those that don't
++#if defined(O_ASYNC) && !defined(__COSMOPOLITAN__)
++    /* (cosmopolitan defines flags a system lacks as all ones, not zero)
++     * Not all operating systems have O_ASYNC, and those that don't
+      * will not let us track the state into rs->open_flags (typically
+      * you achieve the same effect with an ioctl, for example I_SETSIG
+      * on Solaris). But we do not use O_ASYNC, so that's fine.
+diff --git a/hw/block/block.c b/hw/block/block.c
+index 3ceca7d..5adcf97 100644
+--- a/hw/block/block.c
++++ b/hw/block/block.c
+@@ -8,6 +8,7 @@
+  */
+ 
+ #include "qemu/osdep.h"
++#include "qemu/error-report.h"
+ #include "block/block_int-common.h"
+ #include "sysemu/blockdev.h"
+ #include "sysemu/block-backend.h"
+@@ -129,6 +130,15 @@ bool blkconf_blocksizes(BlockConf *conf, Error **errp)
+         abort();
+     }
+ 
++#ifdef __COSMOPOLITAN__
++    /* a probe that reports success but no sizes cannot be used */
++    if (use_blocksizes && (!blocksizes.log || !blocksizes.phys)) {
++        warn_report("block size probe reported log=%u phys=%u, ignoring it",
++                    blocksizes.log, blocksizes.phys);
++        use_blocksizes = false;
++    }
++#endif
++
+     /* fill in detected values if they are not defined via qemu command line */
+     if (!conf->physical_block_size) {
+         if (use_blocksizes) {
+@@ -157,6 +167,14 @@ bool blkconf_blocksizes(BlockConf *conf, Error **errp)
+         }
+     }
+ 
++    if (!conf->logical_block_size || !conf->physical_block_size) {
++        error_setg(errp, "invalid block sizes: logical %u, physical %u "
++                   "(backend_defaults %d, probed %d)",
++                   conf->logical_block_size, conf->physical_block_size,
++                   conf->backend_defaults, use_blocksizes);
++        return false;
++    }
++
+     if (conf->logical_block_size > conf->physical_block_size) {
+         error_setg(errp,
+                    "logical_block_size > physical_block_size not supported");
+diff --git a/monitor/monitor.c b/monitor/monitor.c
+index 56786c0..8aa8fdd 100644
+--- a/monitor/monitor.c
++++ b/monitor/monitor.c
+@@ -77,6 +77,14 @@ Monitor *monitor_cur(void)
+ {
+     Monitor *mon;
+ 
++    if (!coroutine_mon) {
++        /*
++         * Before monitor_init_globals(): the lock is not initialized yet
++         * either. Early messages (error_report() and friends) end up here.
++         */
++        return NULL;
++    }
++
+     qemu_mutex_lock(&monitor_lock);
+     mon = g_hash_table_lookup(coroutine_mon, qemu_coroutine_self());
+     qemu_mutex_unlock(&monitor_lock);
+diff --git a/os-posix.c b/os-posix.c
+index 43f9a43..ba7a773 100644
+--- a/os-posix.c
++++ b/os-posix.c
+@@ -262,6 +262,12 @@ void os_setup_limits(void)
+     struct rlimit nofile;
+ 
+     if (getrlimit(RLIMIT_NOFILE, &nofile) < 0) {
++#ifdef __COSMOPOLITAN__
++        if (errno == EINVAL) {
++            /* Windows has no such limit and cosmopolitan reports EINVAL */
++            return;
++        }
++#endif
+         warn_report("unable to query NOFILE limit: %s", strerror(errno));
+         return;
+     }
+diff --git a/util/mmap-alloc.c b/util/mmap-alloc.c
+index 6feb3d2..85fed34 100644
+--- a/util/mmap-alloc.c
++++ b/util/mmap-alloc.c
+@@ -21,6 +21,9 @@
+ #endif /* CONFIG_LINUX */
+ 
+ #include "qemu/osdep.h"
++#ifdef __COSMOPOLITAN__
++#include <cosmo.h>
++#endif
+ #include "qemu/mmap-alloc.h"
+ #include "qemu/host-utils.h"
+ #include "qemu/cutils.h"
+@@ -251,6 +254,38 @@ static inline size_t mmap_guard_pagesize(int fd)
+ #endif
+ }
+ 
++#ifdef __COSMOPOLITAN__
++/*
++ * Windows can only unmap or replace whole allocations, so the reserve, carve
++ * up and trim sequence below cannot work there. Map the RAM directly instead:
++ * mmap() returns addresses aligned to the allocation granularity, which is
++ * at least the alignment asked for, and there is no guard page.
++ */
++static size_t qemu_ram_windows_size(size_t size)
++{
++    return QEMU_ALIGN_UP(size, (size_t)getgransize());
++}
++
++static void *qemu_ram_mmap_windows(int fd, size_t size, size_t align,
++                                   uint32_t qemu_map_flags, off_t map_offset)
++{
++    const bool readonly = qemu_map_flags & QEMU_MAP_READONLY;
++    const bool shared = qemu_map_flags & QEMU_MAP_SHARED;
++    const int prot = PROT_READ | (readonly ? 0 : PROT_WRITE);
++    const int flags = (fd == -1 ? MAP_ANONYMOUS : 0) |
++                      (shared ? MAP_SHARED : MAP_PRIVATE);
++    void *ptr = mmap(NULL, qemu_ram_windows_size(size), prot, flags, fd,
++                     map_offset);
++
++    if (ptr != MAP_FAILED && !QEMU_IS_ALIGNED((uintptr_t)ptr, align)) {
++        munmap(ptr, qemu_ram_windows_size(size));
++        errno = ENOMEM;
++        return MAP_FAILED;
++    }
++    return ptr;
++}
++#endif
++
+ void *qemu_ram_mmap(int fd,
+                     size_t size,
+                     size_t align,
+@@ -261,6 +296,13 @@ void *qemu_ram_mmap(int fd,
+     size_t offset, total;
+     void *ptr, *guardptr;
+ 
++#ifdef __COSMOPOLITAN__
++    if (IsWindows()) {
++        return qemu_ram_mmap_windows(fd, size, align, qemu_map_flags,
++                                     map_offset);
++    }
++#endif
++
+     /*
+      * Note: this always allocates at least one extra page of virtual address
+      * space, even if size is already aligned.
+@@ -304,6 +346,12 @@ void *qemu_ram_mmap(int fd,
+ void qemu_ram_munmap(int fd, void *ptr, size_t size)
+ {
+     if (ptr) {
++#ifdef __COSMOPOLITAN__
++        if (IsWindows()) {
++            munmap(ptr, qemu_ram_windows_size(size));
++            return;
++        }
++#endif
+         /* Unmap both the RAM block and the guard page */
+         munmap(ptr, size + mmap_guard_pagesize(fd));
+     }
