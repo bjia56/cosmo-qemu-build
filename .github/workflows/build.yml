@@ -31,14 +31,12 @@ jobs:
           version: ${{ env.cosmocc_version }}
 
       # linux-libc-dev(-arm64-cross): kernel headers for QEMU's KVM code
-      # mingw-w64-common: Windows Hypervisor Platform headers for QEMU's WHPX code
       # qemu-user-static: runs the aarch64 halves for configure probes and tests
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build pkg-config zip bzip2 patch \
-            qemu-user-static linux-libc-dev linux-libc-dev-arm64-cross \
-            mingw-w64-common
+            qemu-user-static linux-libc-dev linux-libc-dev-arm64-cross
           pip install meson
 
       - name: Build

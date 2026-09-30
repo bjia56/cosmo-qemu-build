@@ -32,7 +32,28 @@ typedef struct _GUID { uint32_t Data1; uint16_t Data2; uint16_t Data3; uint8_t D
 typedef int DEVICE_POWER_STATE;
 #define ANYSIZE_ARRAY 1
 
+/* SAL annotations carry no meaning for the compiler */
+#define _In_
+#define _In_opt_
+#define _Out_
+#define _Out_opt_
+#define _Inout_
+#define _In_reads_(n)
+#define _In_reads_opt_(n)
+#define _In_reads_bytes_(n)
+#define _Out_writes_(n)
+#define _Out_writes_to_(n, c)
+#define _Out_writes_bytes_(n)
+#define _Out_writes_bytes_to_(n, c)
+#define _Out_writes_bytes_to_opt_(n, c)
+#define _Outptr_result_buffer_(n)
+#ifndef _AMD64_
+#define _AMD64_ 1
+#endif
+
+
 #define WINAPI
+#define __stdcall
 #define CALLBACK __attribute__((ms_abi))
 #define DECLSPEC_IMPORT
 #define DECLSPEC_ALIGN(x) __attribute__((aligned(x)))

@@ -43,8 +43,7 @@ artifacts lose the executable bit: run `chmod +x qemu-*.com`, or start them with
 Requires [cosmocc](https://cosmo.zip/pub/cosmocc/) (with `assimilate`, `apelink` and `fixupobj`), plus
 `git`, `curl`, `make`, `patch`, `zip`, `bzip2`, `ninja`, `pkg-config`, `python3`, `meson` (>= 1.5),
 `qemu-aarch64-static` (to run aarch64 configure-time probes), the Linux kernel headers for each host
-architecture (`linux-libc-dev` and `linux-libc-dev-arm64-cross` on Debian/Ubuntu) and the mingw-w64
-headers (`mingw-w64-common`, for the WHPX code):
+architecture (`linux-libc-dev` and `linux-libc-dev-arm64-cross` on Debian/Ubuntu):
 
 ```bash
 ./scripts/build.sh                       # everything, into ./out

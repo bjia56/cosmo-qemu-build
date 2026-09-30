@@ -30,8 +30,6 @@
 #   - git, curl, make, patch, zip, bzip2, ninja, python3, meson (>= 1.5), pkg-config
 #   - qemu-aarch64-static, to run aarch64 configure-time probes
 #     (or set EXE_WRAPPER_aarch64 to another wrapper)
-#   - the mingw-w64 headers (mingw-w64-common on Debian/Ubuntu), for QEMU's WHPX
-#     code (or point WHP_HEADERS at a directory containing winhvplatform.h)
 #   - Linux kernel headers for each host architecture, for QEMU's KVM code:
 #     linux-libc-dev (x86_64) and linux-libc-dev-arm64-cross (aarch64), or point
 #     KERNEL_HEADERS_<arch> at a directory containing linux/, asm/ and asm-generic/
@@ -100,6 +98,15 @@ PIXMAN_URLS=(
     "https://cairographics.org/releases/pixman-${PIXMAN_VERSION}.tar.gz"
 )
 PIXMAN_SHA256="89a4c1e1e45e0b23dffe708202cb2eaffde0fe3727d7692b2e1739fec78a7dac"
+
+# Windows Hypervisor Platform headers, MIT-licensed by Microsoft (see stage_whp_headers)
+WHP_HEADERS_COMMIT="aaa369489dc90c6483748af94c20897f12ae77dc"
+WHP_HEADERS_URL="https://raw.githubusercontent.com/MicrosoftDocs/Virtualization-Documentation/${WHP_HEADERS_COMMIT}/virtualization/api/hypervisor-platform/headers"
+declare -A WHP_HEADER_SHA256=(
+    [WinHvPlatform.h]="b97678400db4123faa87d1909e30f795dacaeec3e0c408ef66f5f9633412af93"
+    [WinHvPlatformDefs.h]="479b247b2782ab3e7fe657d438b379fdc58df64bebeafbe6aee0386c99e0df1d"
+    [WinHvEmulation.h]="5d303c96e2063520d056c6856ee401054c7689859fb6f1c624481c141dc71333"
+)
 
 for f in common toolchain headers deps firmware qemu link notices; do
     # shellcheck disable=SC1090
