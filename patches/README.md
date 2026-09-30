@@ -43,12 +43,13 @@ entitlement. On Apple Silicon that process is the small loader a Cosmopolitan ex
 first run and stores in `${TMPDIR:-$HOME}`. `ape-m1-hypervisor.patch` is applied by `scripts/build.sh` to a
 copy of cosmocc's `ape-m1.c` (the source of that loader) so that the loader signs itself, transparently:
 
-- On startup it looks at a `<loader>.signed` marker holding the loader's inode, mtime and size.
-- If the marker is missing or does not match (first run, or the loader file changed), it copies itself,
+- On startup it asks the kernel for its own entitlements (`csops`). If the hypervisor entitlement is there,
+  it carries on: the normal case costs one system call.
+- If not, and the loader file on disk does not have the entitlement either (`codesign -d`), it copies itself,
   ad-hoc signs the copy with the entitlement using `codesign`, renames the copy over the loader (running
-  instances keep their file), updates the marker and starts again.
-- If signing fails it does nothing visible and does not try again until the file changes; QEMU then reports
-  that macOS denied access to Hypervisor.framework when HVF is requested.
+  instances keep their file) and starts again.
+- Signing is silent. If it fails, nothing is printed; QEMU reports that macOS denied access to
+  Hypervisor.framework when HVF is requested.
 
 The executables store this loader as `q.ape-01`, and a loader found in `PATH` is never used, so no other
 program's loader can stand in for the signed one. This is done by `scripts/build.sh` with same-length

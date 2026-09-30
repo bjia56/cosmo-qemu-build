@@ -1,6 +1,6 @@
 --- a/ape-m1.c
 +++ b/ape-m1.c
-@@ -43,6 +43,142 @@
+@@ -43,6 +43,178 @@
  #include <time.h>
  #include <unistd.h>
  
@@ -11,11 +11,11 @@
 + * com.apple.security.hypervisor entitlement, and the process a Cosmopolitan
 + * program runs in is this loader. The loader is private to cosmo-qemu-build
 + * (its file name is set when the executable is built), so it can be signed
-+ * without affecting anything else: on the first run, and whenever the file has
-+ * changed since it was last signed, copy it, ad-hoc sign the copy with the
-+ * entitlement, rename the copy over the loader (running instances keep their
-+ * file) and start again. This happens silently; a marker file next to the
-+ * loader records the loader's inode, mtime and size when it was last signed.
++ * without affecting anything else. At startup the loader asks the kernel for its
++ * own entitlements; if the entitlement is missing and the loader file on disk
++ * does not have it either, it copies itself, ad-hoc signs the copy with the
++ * entitlement, renames the copy over the loader (running instances keep their
++ * file) and starts again. This happens silently.
 + */
 +#include <mach-o/dyld.h>
 +#include <spawn.h>
@@ -37,13 +37,30 @@
 +    "</dict>\n"
 +    "</plist>\n";
 +
-+static int QsStamp(const char *path, char *buf, size_t n) {
-+  struct stat st;
-+  if (stat(path, &st))
-+    return -1;
-+  snprintf(buf, n, "%llu %lld %ld %lld\n", (unsigned long long)st.st_ino,
-+           (long long)st.st_mtimespec.tv_sec, (long)st.st_mtimespec.tv_nsec,
-+           (long long)st.st_size);
++#define QS_ENTITLEMENT "com.apple.security.hypervisor"
++#define QS_CS_OPS_ENTITLEMENTS_BLOB 7
++#define QS_CS_OPS_DER_ENTITLEMENTS_BLOB 16
++
++int csops(int pid, unsigned int ops, void *useraddr, size_t usersize);
++
++/* does this process have the entitlement? (asks the kernel, which has the
++   signature's entitlements as a property list and in DER form) */
++static int QsProcessHasEntitlement(void) {
++  static char blob[65536];
++  static const unsigned ops[] = {QS_CS_OPS_ENTITLEMENTS_BLOB,
++                                 QS_CS_OPS_DER_ENTITLEMENTS_BLOB};
++  size_t n;
++  unsigned i;
++  for (i = 0; i < sizeof(ops) / sizeof(ops[0]); ++i) {
++    if (csops(getpid(), ops[i], blob, sizeof(blob)))
++      continue;
++    /* magic and length, both big endian, then the entitlements */
++    n = ((size_t)(unsigned char)blob[4] << 24) | ((size_t)(unsigned char)blob[5] << 16) |
++        ((size_t)(unsigned char)blob[6] << 8) | (size_t)(unsigned char)blob[7];
++    if (n >= 8 && n <= sizeof(blob) &&
++        memmem(blob + 8, n - 8, QS_ENTITLEMENT, sizeof(QS_ENTITLEMENT) - 1))
++      return 1;
++  }
 +  return 0;
 +}
 +
@@ -96,26 +113,51 @@
 +  return WIFEXITED(status) && WEXITSTATUS(status) == 0 ? 0 : -1;
 +}
 +
++/* does the file have the entitlement in its signature? (asks codesign) */
++static int QsFileHasEntitlement(const char *path) {
++  static char out[65536];
++  size_t n = 0;
++  ssize_t r;
++  int fds[2], status, found;
++  pid_t pid;
++  posix_spawn_file_actions_t fa;
++  char *const cmd[] = {"/usr/bin/codesign", "-d", "--entitlements", "-", (char *)path, 0};
++  if (pipe(fds))
++    return 0;
++  if (posix_spawn_file_actions_init(&fa)) {
++    close(fds[0]);
++    close(fds[1]);
++    return 0;
++  }
++  posix_spawn_file_actions_adddup2(&fa, fds[1], 1);
++  posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
++  posix_spawn_file_actions_addclose(&fa, fds[0]);
++  posix_spawn_file_actions_addclose(&fa, fds[1]);
++  found = posix_spawn(&pid, cmd[0], &fa, 0, cmd, environ);
++  posix_spawn_file_actions_destroy(&fa);
++  close(fds[1]);
++  if (found) {
++    close(fds[0]);
++    return 0;
++  }
++  while (n < sizeof(out) && (r = read(fds[0], out + n, sizeof(out) - n)) > 0)
++    n += r;
++  close(fds[0]);
++  waitpid(pid, &status, 0);
++  return memmem(out, n, QS_ENTITLEMENT, sizeof(QS_ENTITLEMENT) - 1) != 0;
++}
++
 +static void QsEnsureEntitlement(char **argv) {
 +  uint32_t size;
-+  FILE *f;
-+  size_t n;
-+  char path[PATH_MAX], self[PATH_MAX], marker[PATH_MAX + 16];
++  char path[PATH_MAX], self[PATH_MAX];
 +  char tmp[PATH_MAX + 32], plist[PATH_MAX + 32];
-+  char want[160], have[160];
++  if (QsProcessHasEntitlement())
++    return;
 +  size = sizeof(path);
 +  if (_NSGetExecutablePath(path, &size) || !realpath(path, self))
 +    return;
-+  snprintf(marker, sizeof(marker), "%s.signed", self);
-+  if (QsStamp(self, want, sizeof(want)))
-+    return;
-+  if ((f = fopen(marker, "r"))) {
-+    n = fread(have, 1, sizeof(have) - 1, f);
-+    fclose(f);
-+    have[n] = 0;
-+    if (!strcmp(have, want))
-+      return; /* signed, or already tried, for this very file */
-+  }
++  if (QsFileHasEntitlement(self))
++    return; /* signed already; nothing more to do from here */
 +  snprintf(tmp, sizeof(tmp), "%s.tmp.%d", self, (int)getpid());
 +  snprintf(plist, sizeof(plist), "%s.plist.%d", self, (int)getpid());
 +  char *const cmd[] = {"/usr/bin/codesign", "--force", "-s", "-",
@@ -124,26 +166,20 @@
 +      QsRun(cmd)) {
 +    unlink(plist);
 +    unlink(tmp);
-+    /* do not try again until the loader file changes */
-+    QsWriteFile(marker, want, strlen(want));
 +    return;
 +  }
 +  unlink(plist);
 +  if (rename(tmp, self)) {
 +    unlink(tmp);
-+    QsWriteFile(marker, want, strlen(want));
 +    return;
 +  }
-+  if (QsStamp(self, want, sizeof(want)) ||
-+      QsWriteFile(marker, want, strlen(want)))
-+    return; /* cannot remember it, so do not start over */
 +  execv(self, argv);
 +}
 +
  #define pagesz 16384
  /* maximum path size that cosmo can take */
  #define PATHSIZE       (PATH_MAX < 1024 ? PATH_MAX : 1024)
-@@ -943,6 +1079,8 @@
+@@ -943,6 +1115,8 @@
    union ElfEhdrBuf *ebuf;
    char *p, *pe, *exe, *prog, *execfn;
  
