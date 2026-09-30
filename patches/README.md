@@ -28,8 +28,11 @@ version, and applied in filename order.
 | `10-cosmo-windows-early-startup` | Windows' `getrlimit(RLIMIT_NOFILE)` fails with `EINVAL` under Cosmopolitan, which made `os_setup_limits()` warn before the monitor's globals exist and hit an uninitialized mutex. Skip that warning, and make `monitor_cur()` safe before `monitor_init_globals()` so any early message is printed instead of crashing. |
 | `11-cosmo-windows-ram-mmap` | On Windows, Cosmopolitan can only unmap or `MAP_FIXED`-replace whole allocations, but QEMU's RAM allocator reserves a `PROT_NONE` region, re-maps a piece of it and trims the rest (`ENOTSUP`, seen as "cannot set up guest memory"). When running on Windows, map RAM directly and unmap exactly what was mapped. Other operating systems keep the original code. |
 | `12-cosmo-crash-reports` | Call Cosmopolitan's `ShowCrashReports()` at the start of `main()`, so a crash, abort or `SIGFPE` prints registers, a backtrace and a `cosmoaddr2line` command instead of a bare "terminating on uncaught signal". |
+| `13-cosmo-block-sizes-sanity` | A block-size probe that reports success with zero sizes made `blkconf_blocksizes()` divide by zero (SIGFPE) on Windows. Ignore such a probe with a warning, and fail with an error that prints the state if the sizes are still zero. |
+| `14-cosmo-file-posix-unsupported-flags` | Cosmopolitan defines an `O_*` flag a system lacks as all ones, not zero (`O_ASYNC` is `0xffffffff` on Windows), so the `(open_flags & O_ASYNC) == 0` assertion in `raw_reconfigure_getfd()` always failed there, aborting at shutdown. Skip it on Cosmopolitan. |
+| `15-cosmo-whpx-trace` | Opt-in tracing for debugging WHPX: with `QEMU_WHPX_TRACE` set, print the name of every WHP call (and emulator callback) just before it is made, so the last line before a crash names the API. |
 
-Patches `04`-`12` are only needed for the system emulators; they are harmless
+Patches `04`-`15` are only needed for the system emulators; they are harmless
 for the `qemu-img` build.
 
 ### Building system emulators

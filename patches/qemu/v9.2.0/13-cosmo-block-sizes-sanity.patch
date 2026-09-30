@@ -1,0 +1,43 @@
+diff --git a/hw/block/block.c b/hw/block/block.c
+index 3ceca7d..5adcf97 100644
+--- a/hw/block/block.c
++++ b/hw/block/block.c
+@@ -8,6 +8,7 @@
+  */
+ 
+ #include "qemu/osdep.h"
++#include "qemu/error-report.h"
+ #include "block/block_int-common.h"
+ #include "sysemu/blockdev.h"
+ #include "sysemu/block-backend.h"
+@@ -129,6 +130,15 @@ bool blkconf_blocksizes(BlockConf *conf, Error **errp)
+         abort();
+     }
+ 
++#ifdef __COSMOPOLITAN__
++    /* a probe that reports success but no sizes cannot be used */
++    if (use_blocksizes && (!blocksizes.log || !blocksizes.phys)) {
++        warn_report("block size probe reported log=%u phys=%u, ignoring it",
++                    blocksizes.log, blocksizes.phys);
++        use_blocksizes = false;
++    }
++#endif
++
+     /* fill in detected values if they are not defined via qemu command line */
+     if (!conf->physical_block_size) {
+         if (use_blocksizes) {
+@@ -157,6 +167,14 @@ bool blkconf_blocksizes(BlockConf *conf, Error **errp)
+         }
+     }
+ 
++    if (!conf->logical_block_size || !conf->physical_block_size) {
++        error_setg(errp, "invalid block sizes: logical %u, physical %u "
++                   "(backend_defaults %d, probed %d)",
++                   conf->logical_block_size, conf->physical_block_size,
++                   conf->backend_defaults, use_blocksizes);
++        return false;
++    }
++
+     if (conf->logical_block_size > conf->physical_block_size) {
+         error_setg(errp,
+                    "logical_block_size > physical_block_size not supported");
