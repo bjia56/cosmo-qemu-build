@@ -5,11 +5,11 @@
  #include <unistd.h>
  
 +/*
-+ * cosmo-qemu: give this loader the hypervisor entitlement.
++ * cosmo-qemu-build: give this loader the hypervisor entitlement.
 + *
 + * Hypervisor.framework only works for a process whose executable carries the
 + * com.apple.security.hypervisor entitlement, and the process a Cosmopolitan
-+ * program runs in is this loader. The loader is private to cosmo-qemu (its file
++ * program runs in is this loader. The loader is private to cosmo-qemu-build (its file
 + * name is set when the executable is built), so it is fine to sign it: on the
 + * first run, and whenever the file has changed since it was last signed, copy
 + * it, ad-hoc sign the copy with the entitlement, rename the copy over the
@@ -110,7 +110,7 @@
 +    if (!strcmp(have, want))
 +      return; /* signed, or already tried, for this very file */
 +  }
-+  dprintf(2, "cosmo-qemu: signing the loader with the hypervisor entitlement "
++  dprintf(2, "cosmo-qemu-build: signing the loader with the hypervisor entitlement "
 +             "(one time; COSMO_QEMU_NO_SELF_SIGN=1 skips this)\n");
 +  snprintf(tmp, sizeof(tmp), "%s.tmp.%d", self, (int)getpid());
 +  snprintf(plist, sizeof(plist), "%s.plist.%d", self, (int)getpid());
@@ -118,7 +118,7 @@
 +                       "--entitlements",    plist,     tmp,  0};
 +  if (QsWriteFile(plist, QsPlist, sizeof(QsPlist) - 1) || QsCopyFile(self, tmp) ||
 +      QsRun(cmd)) {
-+    dprintf(2, "cosmo-qemu: could not sign the loader; HVF will not work\n");
++    dprintf(2, "cosmo-qemu-build: could not sign the loader; HVF will not work\n");
 +    unlink(plist);
 +    unlink(tmp);
 +    /* do not try again until the loader file changes */

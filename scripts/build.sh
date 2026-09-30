@@ -6,16 +6,20 @@
 # into a single fat binary per program that runs on multiple platforms.
 #
 # Outputs:
-#   src/cosmo_qemu_img/data/qemu-img.com     qemu-img (packaged as the Python wheel)
+#   out/qemu-img.com                         qemu-img
 #   out/qemu-system-<guest>.com              one system emulator per guest
-#                                            architecture, with KVM compiled in
-#                                            where the guest matches the host
-#                                            architecture (plus TCG everywhere)
-#                                            and its firmware embedded in /zip
+#                                            architecture, with its firmware
+#                                            embedded in /zip; KVM is compiled
+#                                            in where the guest matches the host
+#                                            architecture, WHPX (x86_64) and HVF
+#                                            (aarch64) for Windows and Apple
+#                                            Silicon, and TCG everywhere
+#   out/COPYING, out/THIRD_PARTY_NOTICES.txt
 #
 # The emulators pick an accelerator at run time (-machine accel=kvm:tcg): KVM
 # only works on Linux hosts where /dev/kvm is usable and the guest architecture
-# matches the host's, otherwise QEMU falls back to TCG.
+# matches the host's, WHPX on Windows with the Hypervisor Platform enabled, HVF
+# on Apple Silicon; otherwise QEMU falls back to TCG.
 #
 # QEMU needs glib (which needs libffi, pcre2 and a libintl), pixman and zlib.
 # None of those are provided by cosmocc, so they are built from source into a
@@ -41,7 +45,7 @@
 #   SYSTEM_TARGETS       guest architectures to build emulators for
 #                        (default: "x86_64 aarch64"; empty builds qemu-img only)
 #   BUILD_DIR            build tree location (default: ./build)
-#   OUT_DIR              emulator output location (default: ./out)
+#   OUT_DIR              output location (default: ./out)
 #   EXE_WRAPPER_<arch>   command used to run <arch> test programs
 #   KERNEL_HEADERS_<arch> kernel header tree for <arch>
 #   QEMU_REPO            QEMU git URL
@@ -61,17 +65,14 @@ DL_DIR="${BUILD_DIR}/dl"
 LOG_DIR="${BUILD_DIR}/logs"
 SRC_DIR="${BUILD_DIR}/source"
 TOOLS_DIR="${BUILD_DIR}/tools"
-OUTPUT_DIR="${PROJECT_ROOT}/src/cosmo_qemu_img/data"
-OUTPUT_BINARY="${OUTPUT_DIR}/qemu-img.com"
-OUTPUT_LICENSE="${OUTPUT_DIR}/COPYING"
-OUTPUT_NOTICES="${OUTPUT_DIR}/THIRD_PARTY_NOTICES.txt"
 
 JOBS="${JOBS:-$(nproc)}"
 ARCHES="${ARCHES:-x86_64 aarch64}"
 SYSTEM_TARGETS="${SYSTEM_TARGETS-x86_64 aarch64}"
 
-# QEMU version comes from the Python module so the package and the build agree
-QEMU_VERSION=$(python3 -c "import sys; sys.path.insert(0, '${PROJECT_ROOT}/src'); from cosmo_qemu_img._version import QEMU_GIT_TAG; print(QEMU_GIT_TAG)")
+# The QEMU release to build: a tag from https://gitlab.com/qemu-project/qemu/-/tags
+# (patches/qemu/<tag> holds the changes for it)
+QEMU_VERSION="${QEMU_VERSION:-v9.2.0}"
 QEMU_REPO="${QEMU_REPO:-https://gitlab.com/qemu-project/qemu.git}"
 
 # Dependencies, built into the sysroot. Tarballs are verified by SHA-256.
@@ -146,7 +147,7 @@ echo ""
 # ---------------------------------------------------------------------------
 
 rm -rf "${SRC_DIR}" "${TOOLS_DIR}" "${BUILD_DIR}"/{x86_64,aarch64} "${LOG_DIR}"
-mkdir -p "${DL_DIR}" "${LOG_DIR}" "${SRC_DIR}" "${TOOLS_DIR}" "${OUTPUT_DIR}"
+mkdir -p "${DL_DIR}" "${LOG_DIR}" "${SRC_DIR}" "${TOOLS_DIR}" "${OUT_DIR}"
 
 prepare_toolchain
 
@@ -207,11 +208,10 @@ echo "================================================"
 
 prepare_loader_source
 
-link_fat qemu-img "${OUTPUT_BINARY}"
-ls -lh "${OUTPUT_BINARY}"
+link_fat qemu-img "${OUT_DIR}/qemu-img.com"
+ls -lh "${OUT_DIR}/qemu-img.com"
 
 if [ -n "${SYSTEM_TARGETS}" ]; then
-    mkdir -p "${OUT_DIR}"
     for guest in ${SYSTEM_TARGETS}; do
         binary="${OUT_DIR}/qemu-system-${guest}.com"
         link_fat "qemu-system-${guest}" "${binary}"
@@ -227,13 +227,9 @@ fi
 # Licenses: QEMU is GPL-2.0, the static dependencies carry their own terms
 # ---------------------------------------------------------------------------
 
-cp "${SRC_DIR}/qemu/COPYING" "${OUTPUT_LICENSE}"
-write_notices "${OUTPUT_NOTICES}"
-echo "Copied licenses to ${OUTPUT_DIR}"
-if [ -n "${SYSTEM_TARGETS}" ]; then
-    cp "${SRC_DIR}/qemu/COPYING" "${OUT_DIR}/COPYING"
-    write_notices "${OUT_DIR}/THIRD_PARTY_NOTICES.txt"
-fi
+cp "${SRC_DIR}/qemu/COPYING" "${OUT_DIR}/COPYING"
+write_notices "${OUT_DIR}/THIRD_PARTY_NOTICES.txt"
+echo "Copied licenses to ${OUT_DIR}"
 
 # ---------------------------------------------------------------------------
 # Smoke tests (x86_64 hosts only; the aarch64 halves are tested in CI)
@@ -242,7 +238,7 @@ fi
 if [[ " ${ARCHES} " == *" x86_64 "* ]] && [ "$(uname -m)" = "x86_64" ]; then
     echo ""
     echo "Testing qemu-img..."
-    "${SCRIPT_DIR}/smoke_test.sh" "sh ${OUTPUT_BINARY}"
+    "${SCRIPT_DIR}/smoke_test.sh" "sh ${OUT_DIR}/qemu-img.com"
     for guest in ${SYSTEM_TARGETS}; do
         echo ""
         echo "Testing qemu-system-${guest}..."
@@ -254,7 +250,7 @@ echo ""
 echo "================================================"
 echo "Build complete!"
 echo "================================================"
-echo "qemu-img:  ${OUTPUT_BINARY}"
+echo "qemu-img:  ${OUT_DIR}/qemu-img.com"
 for guest in ${SYSTEM_TARGETS}; do
     echo "emulator:  ${OUT_DIR}/qemu-system-${guest}.com"
 done

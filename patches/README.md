@@ -46,7 +46,7 @@ in `${TMPDIR:-$HOME}`). Hypervisor.framework only works for a process whose exec
 itself, ad-hoc signs the copy with the entitlement, renames the copy over the loader (so running
 instances keep their file) and re-executes. `COSMO_QEMU_NO_SELF_SIGN=1` disables it.
 
-The build also gives the fat binaries their own loader cache name (`.cqape-01` instead of `.ape-1.10`; bump
+The build also gives the fat binaries their own loader cache name (`.cqape-02` instead of `.ape-1.10`; bump
 the number when the loader changes, because a cached loader with the same name is reused as is) and stops
 them from using a system-wide `ape`, with same-length replacements of two lines of the script header that
 `apelink` writes (the build fails if those lines are not exactly as expected), so no other APE program's

@@ -1,104 +1,77 @@
-# cosmo-qemu
+# cosmo-qemu-build
 
-[QEMU](https://www.qemu.org/) built with [Cosmopolitan libc](https://github.com/jart/cosmopolitan), so a
-single executable runs on Linux, macOS and Windows.
+Build scripts and patches for [QEMU](https://www.qemu.org/) as
+[Cosmopolitan libc](https://github.com/jart/cosmopolitan) executables: one file per program that
+runs on Linux, macOS and Windows, on x86_64 and aarch64.
 
-This repository currently builds `qemu-img` and distributes it as the `cosmo-qemu-img` Python package.
-Work on the system emulators (TCG, plus KVM on Linux) is in progress; the Cosmopolitan-specific changes
-for it already live in [`patches/`](patches).
+| Program | Notes |
+| --- | --- |
+| `qemu-img.com` | Disk image tool. |
+| `qemu-system-x86_64.com` | x86_64 system emulator, firmware (SeaBIOS, edk2, ...) embedded. |
+| `qemu-system-aarch64.com` | aarch64 system emulator, edk2 firmware embedded. |
 
-## cosmo-qemu-img
+## Acceleration
 
-Cross-platform `qemu-img` command built with Cosmopolitan libc, distributed as a Python package.
+The system emulators choose an accelerator at run time, and TCG (software emulation) works everywhere:
 
-## Installation
+| Accelerator | Where | Notes |
+| --- | --- | --- |
+| KVM | Linux, guest architecture = host architecture | Needs a usable `/dev/kvm`. |
+| WHPX | Windows x86_64, x86_64 guests | Needs the "Windows Hypervisor Platform" feature. |
+| HVF | macOS on Apple Silicon, aarch64 guests | See below. |
 
-```bash
-pip install cosmo-qemu-img
-```
+Use `-machine accel=kvm:tcg` (or `whpx:tcg`, `hvf:tcg`) to try an accelerator and fall back to TCG.
 
-## Usage
+**HVF and the loader.** Hypervisor.framework only works for a process signed with the
+`com.apple.security.hypervisor` entitlement, and on Apple Silicon that process is the small APE loader the
+executable compiles on its first run (this needs the Xcode command line tools, as for any APE program).
+These builds use their own loader (`${TMPDIR:-$HOME}/.cqape-02`), which signs itself with the entitlement
+the first time it runs and prints a notice. Set `COSMO_QEMU_NO_SELF_SIGN=1` to skip that. See
+[`patches/README.md`](patches/README.md).
 
-### Command Line
+Not included: network block drivers (curl, ssh, nfs, rbd, gluster), encryption backed by
+gnutls/nettle/gcrypt, zstd and bzip2 compression, Linux-specific I/O (io_uring, linux-aio), 9p/virtfs,
+graphics front ends (SDL, GTK, ...), vhost and user-mode networking (slirp).
 
-```bash
-cosmo-qemu-img create -f qcow2 disk.qcow2 10G
-cosmo-qemu-img info disk.qcow2
-cosmo-qemu-img convert -f raw -O qcow2 disk.raw disk.qcow2
-cosmo-qemu-img --version
-```
+## Getting the binaries
 
-### Python API
+The [Build workflow](.github/workflows/build.yml) builds everything and uploads one artifact per
+program (the binary, `COPYING` and `THIRD_PARTY_NOTICES.txt`). There are no releases yet. Downloaded
+artifacts lose the executable bit: run `chmod +x qemu-*.com`, or start them with `sh ./qemu-img.com`.
 
-```python
-import cosmo_qemu_img
+## Building from source
 
-cosmo_qemu_img.run('create', '-f', 'qcow2', 'disk.qcow2', '10G', check=True)
-
-result = cosmo_qemu_img.run('info', '--output=json', 'disk.qcow2')
-print(result.stdout.decode())
-```
-
-An async variant, `cosmo_qemu_img.run_async()`, takes the same arguments.
-
-## Features
-
-- Single universal binary runs on Windows, macOS, and Linux
-- No external dependencies
-- Python 3.8+ compatible
-- Supports the qemu-img image formats and subcommands that do not need optional
-  libraries: `create`, `info`, `convert`, `check`, `compare`, `snapshot`, `commit`,
-  `resize`, `rebase`, `measure`, `map`, `bitmap`, and more
-
-Not included in this build: network block drivers (curl, ssh, nfs, rbd, gluster),
-encryption backed by gnutls/nettle/gcrypt, zstd and bzip2 compression, and Linux-specific
-I/O (io_uring, linux-aio). qcow2 zlib compression is supported.
-
-## Platforms
-
-- Windows x64
-- macOS x86_64 / ARM64
-- Linux x86_64 / ARM64
-
-Linux wheels ship a native ELF for the architecture. Optional sandboxing with
-[pledge](https://justine.lol/pledge/) is available on Linux with
-`cosmo_qemu_img.run(..., pledge=True)`; it is experimental and off by default.
-
-## Building from Source
-
-Requires [cosmocc](https://cosmo.zip/pub/cosmocc/), plus `git`, `curl`, `make`, `patch`,
-`zip`, `bzip2`, `ninja`, `pkg-config`, `meson`, `qemu-user-static` (to run aarch64 configure-time
-probes) and the Linux kernel headers for each host architecture (`linux-libc-dev` and
-`linux-libc-dev-arm64-cross` on Debian/Ubuntu):
+Requires [cosmocc](https://cosmo.zip/pub/cosmocc/) (with `assimilate`, `apelink` and `fixupobj`), plus
+`git`, `curl`, `make`, `patch`, `zip`, `bzip2`, `ninja`, `pkg-config`, `python3`, `meson` (>= 1.5),
+`qemu-aarch64-static` (to run aarch64 configure-time probes), the Linux kernel headers for each host
+architecture (`linux-libc-dev` and `linux-libc-dev-arm64-cross` on Debian/Ubuntu) and the mingw-w64
+headers (`mingw-w64-common`, for the WHPX code):
 
 ```bash
-./scripts/build.sh
-./scripts/smoke_test.sh "sh src/cosmo_qemu_img/data/qemu-img.com"
-./scripts/smoke_test_system.sh "sh out/qemu-system-x86_64.com" x86_64
-pip install -e .
+./scripts/build.sh                       # everything, into ./out
+./scripts/smoke_test_aarch64.sh out      # the aarch64 halves, under qemu-user
 ```
 
-The build compiles zlib, pcre2, libffi, glib and pixman for each architecture into a static
-sysroot, then builds `qemu-img` and the system emulators from a tagged QEMU release and links
-both architectures with `apelink`. Cosmopolitan-specific changes to glib and QEMU are in
-[`patches/`](patches). Platform wheels and an sdist are produced by `./scripts/build_wheels.sh`.
+`scripts/build.sh` runs the smoke tests for the x86_64 halves itself. It compiles zlib, pcre2, libffi,
+glib and pixman for each architecture into a static sysroot, then builds QEMU from a tagged release (set
+`QEMU_VERSION`, default `v9.2.0`) and links both architectures into one file per program with `apelink`.
+The Cosmopolitan-specific changes to glib and QEMU are in [`patches/`](patches), and
+[`compat/`](compat) holds the header shims and the macOS loader patch they need.
 
-`qemu-img` goes to `src/cosmo_qemu_img/data/qemu-img.com`. The system emulators
-(`qemu-system-x86_64` and `qemu-system-aarch64`) go to `out/qemu-system-<guest>.com`, each with
-its firmware embedded, and are not part of the Python package yet. They compile in KVM (used
-on Linux when the guest architecture matches the host and `/dev/kvm` is usable) and TCG;
-pick between them at run time with `-machine accel=kvm:tcg`. Set `SYSTEM_TARGETS=` (empty)
-to build only `qemu-img`, or `ARCHES=x86_64` to build for one host architecture.
+Useful environment variables: `ARCHES` and `SYSTEM_TARGETS` (defaults: `x86_64 aarch64`; an empty
+`SYSTEM_TARGETS` builds only `qemu-img`), `BUILD_DIR`, `OUT_DIR`, `JOBS`. The top of
+[`scripts/build.sh`](scripts/build.sh) lists them all.
 
 ## License
 
-The Python packaging in this repository is MIT - See [LICENSE](LICENSE).
+The build scripts in this repository are MIT - See [LICENSE](LICENSE). The patches are changes to QEMU
+and glib and carry their licenses (GPL-2.0-or-later and LGPL-2.1-or-later).
 
-The bundled `qemu-img` binary is built from [QEMU](https://www.qemu.org/) and is licensed under
-the GPL-2.0, see [COPYING](https://gitlab.com/qemu-project/qemu/-/blob/master/COPYING). It statically
-links glib (LGPL-2.1+), pcre2 (BSD), libffi (MIT) and zlib (zlib); their license texts ship with the
-package in `THIRD_PARTY_NOTICES.txt`.
+The binaries are built from [QEMU](https://www.qemu.org/), which is licensed under the GPL-2.0, see
+[COPYING](https://gitlab.com/qemu-project/qemu/-/blob/master/COPYING); it ships next to each binary.
+They statically link glib (LGPL-2.1+), pcre2 (BSD), libffi (MIT), zlib (zlib) and pixman (MIT); their
+license texts are in `THIRD_PARTY_NOTICES.txt`.
 
-The corresponding source for the binary is the QEMU tag named in
-`src/cosmo_qemu_img/_version.py` together with the patches and build scripts in this repository, all of
-which are also included in the source distribution.
+The corresponding source for a binary is the QEMU tag it was built from (`QEMU_VERSION` in
+[`scripts/build.sh`](scripts/build.sh)) together with the patches and scripts in this repository at the
+same commit.
