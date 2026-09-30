@@ -47,6 +47,10 @@
 #   QEMU_REPO            QEMU git URL
 #   GLIB_REPO            glib git URL
 
+# The steps live in scripts/lib/: common (helpers), toolchain, headers, deps,
+# firmware, qemu, link and notices. This file holds the configuration and runs
+# them in order.
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -96,6 +100,11 @@ PIXMAN_URLS=(
 )
 PIXMAN_SHA256="89a4c1e1e45e0b23dffe708202cb2eaffde0fe3727d7692b2e1739fec78a7dac"
 
+for f in common toolchain headers deps firmware qemu link notices; do
+    # shellcheck disable=SC1090
+    . "${SCRIPT_DIR}/lib/${f}.sh"
+done
+
 echo "================================================"
 echo "Building QEMU with Cosmopolitan libc"
 echo "Host architectures: ${ARCHES}"
@@ -105,61 +114,6 @@ echo "Build directory: ${BUILD_DIR}"
 echo "QEMU version: ${QEMU_VERSION}"
 echo "glib version: ${GLIB_VERSION}"
 echo ""
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-die() { echo "Error: $*" >&2; exit 1; }
-
-# run_logged <name> <command...>: run quietly, dump the log tail on failure
-run_logged() {
-    local name=$1; shift
-    local log="${LOG_DIR}/${name}.log"
-    echo "  ${name}..."
-    if ! "$@" >"${log}" 2>&1; then
-        echo "Error: step '${name}' failed. Last lines of ${log}:" >&2
-        tail -n 40 "${log}" >&2
-        exit 1
-    fi
-}
-
-# download <sha256> <output name> <url>...: try each URL until one matches
-download() {
-    local sha=$1 name=$2; shift 2
-    local out="${DL_DIR}/${name}" url
-    if [ -f "$out" ] && echo "${sha}  ${out}" | sha256sum -c --status; then
-        return 0
-    fi
-    for url in "$@"; do
-        echo "  downloading ${name} from ${url}"
-        if curl --retry 5 --retry-delay 5 -sSfL -o "$out" "$url" \
-            && echo "${sha}  ${out}" | sha256sum -c --status; then
-            return 0
-        fi
-        echo "  (failed or checksum mismatch, trying next mirror)"
-    done
-    die "could not download ${name} with a matching checksum"
-}
-
-# clone_tag <repo> <tag> <dest>
-clone_tag() {
-    echo "  cloning $(basename "$1" .git) $2"
-    GIT_LFS_SKIP_SMUDGE=1 git -c advice.detachedHead=false clone -q --depth 1 --branch "$2" "$1" "$3"
-    [ -d "$3/.git" ] || die "clone of $1 failed"
-}
-
-# apply_patches <component> <version> <source dir>
-apply_patches() {
-    local dir="${PROJECT_ROOT}/patches/$1/$2"
-    [ -d "$dir" ] || return 0
-    local p
-    for p in "$dir"/*.patch; do
-        [ -f "$p" ] || continue
-        echo "  applying $1/$(basename "$p")"
-        patch -s -p1 -d "$3" < "$p"
-    done
-}
 
 # ---------------------------------------------------------------------------
 # Tool checks
@@ -194,47 +148,7 @@ echo ""
 rm -rf "${SRC_DIR}" "${TOOLS_DIR}" "${BUILD_DIR}"/{x86_64,aarch64} "${LOG_DIR}"
 mkdir -p "${DL_DIR}" "${LOG_DIR}" "${SRC_DIR}" "${TOOLS_DIR}" "${OUTPUT_DIR}"
 
-# cosmocc ships its binutils as APE files, which Python (meson) cannot exec
-# directly, so use assimilated (native ELF) copies. The compiler wrappers also
-# drop -m64, which the cosmocc driver mishandles and which QEMU's configure
-# always adds on x86_64.
-echo "Preparing toolchain shims..."
-for arch in $ARCHES; do
-    for t in ar ranlib nm strip objcopy ld as; do
-        cp "${COSMO_BIN}/${arch}-linux-cosmo-${t}" "${TOOLS_DIR}/${arch}-cosmo-${t}"
-        # already-native ELF files make assimilate exit nonzero; that is fine
-        assimilate -x "${TOOLS_DIR}/${arch}-cosmo-${t}" >/dev/null 2>&1 || true
-        "${TOOLS_DIR}/${arch}-cosmo-${t}" --version >/dev/null 2>&1 \
-            || die "${arch}-cosmo-${t} is not runnable after assimilate"
-    done
-    for t in cc gcc; do
-        cat > "${TOOLS_DIR}/${arch}-cosmo-${t}" <<EOF
-#!/bin/bash
-args=()
-for a in "\$@"; do [[ \$a == -m64 ]] || args+=("\$a"); done
-# -mcosmo has to be seen by the cosmocc driver itself; QEMU's link step passes
-# its flags in a response file, where the driver cannot see them. Only add it to
-# real compile/link/preprocess invocations, not to "--version" style probes.
-if [[ -n \${COSMO_MCOSMO:-} ]]; then
-    for a in "\${args[@]}"; do
-        case \$a in -c|-o|-E|-S) args=(-mcosmo "\${args[@]}"); break ;; esac
-    done
-fi
-exec "${COSMO_BIN}/${arch}-unknown-cosmo-cc" "\${args[@]}"
-EOF
-    done
-    for t in c++ g++; do
-        cat > "${TOOLS_DIR}/${arch}-cosmo-${t}" <<EOF
-#!/bin/bash
-args=()
-for a in "\$@"; do [[ \$a == -m64 ]] || args+=("\$a"); done
-exec "${COSMO_BIN}/${arch}-unknown-cosmo-c++" "\${args[@]}"
-EOF
-    done
-    ln -s "$(command -v pkg-config)" "${TOOLS_DIR}/${arch}-cosmo-pkg-config"
-    chmod +x "${TOOLS_DIR}"/${arch}-cosmo-*
-done
-export PATH="${TOOLS_DIR}:${PATH}"
+prepare_toolchain
 
 echo "Fetching sources..."
 download "${ZLIB_SHA256}" "zlib-${ZLIB_VERSION}.tar.gz" "${ZLIB_URLS[@]}"
@@ -256,340 +170,6 @@ apply_patches qemu "${QEMU_VERSION}" "${SRC_DIR}/qemu"
 # ---------------------------------------------------------------------------
 # Per-architecture build
 # ---------------------------------------------------------------------------
-
-exe_wrapper_for() {
-    local var="EXE_WRAPPER_$1"
-    if [ -n "${!var:-}" ]; then
-        echo "${!var}"
-    elif [ "$1" = "x86_64" ]; then
-        # x86_64 outputs are APE files; sh knows how to start them
-        echo "sh"
-    else
-        echo "qemu-$1-static"
-    fi
-}
-
-# stage_kernel_headers <arch> <sysroot>
-#
-# QEMU's vendored linux/kvm.h includes the base kernel headers (linux/types.h,
-# linux/ioctl.h, asm/*, ...), which QEMU expects the host's kernel headers
-# package to provide and cosmocc does not ship. Stage only the base headers,
-# never kvm.h: QEMU's vendored copy has to win.
-stage_kernel_headers() {
-    local arch=$1 S=$2
-    local var="KERNEL_HEADERS_${arch}" root="" asm="" cand
-    if [ -n "${!var:-}" ]; then
-        root="${!var}"; asm="${root}/asm"
-    elif [ "$arch" = "x86_64" ]; then
-        root=/usr/include
-        for cand in /usr/include/x86_64-linux-gnu/asm /usr/include/asm; do
-            [ -f "${cand}/ioctl.h" ] && asm="$cand" && break
-        done
-    else
-        root=/usr/aarch64-linux-gnu/include; asm="${root}/asm"
-    fi
-    [ -f "${root}/linux/ioctl.h" ] && [ -f "${asm}/ioctl.h" ] && [ -d "${root}/asm-generic" ] || die \
-        "kernel headers for ${arch} not found (looked in ${root}). Install linux-libc-dev
-(x86_64) or linux-libc-dev-arm64-cross (aarch64), or set KERNEL_HEADERS_${arch}"
-
-    echo "  staging ${arch} kernel headers from ${root}..."
-    mkdir -p "${S}/include/linux" "${S}/include/asm" "${S}/include/asm-generic"
-    local f
-    for f in ioctl types const stddef posix_types; do
-        cp "${root}/linux/${f}.h" "${S}/include/linux/"
-    done
-    # QEMU's vendored asm/kvm.h includes others (asm/ptrace.h on arm64, ...)
-    for f in "${asm}"/*.h; do
-        case "$(basename "$f")" in
-            kvm*.h) ;;
-            *) cp "$f" "${S}/include/asm/" ;;
-        esac
-    done
-    cp -r "${root}/asm-generic/." "${S}/include/asm-generic/"
-}
-
-# stage_whp_headers <sysroot>
-#
-# The Windows Hypervisor Platform headers (winhvplatform.h, ...) are part of
-# the mingw-w64 project (ZPL-2.1). They only need a few base Windows types,
-# which the headers in compat/whp provide instead of a full Windows SDK. They
-# get their own directory, so no generic Windows header name is visible to
-# QEMU's or glib's configure probes.
-stage_whp_headers() {
-    local S=$1 dir="" cand
-    for cand in "${WHP_HEADERS:-}" /usr/share/mingw-w64/include /usr/x86_64-w64-mingw32/include; do
-        if [ -n "${cand}" ] && [ -f "${cand}/winhvplatform.h" ]; then
-            dir="${cand}"
-            break
-        fi
-    done
-    [ -n "${dir}" ] || die "WHP headers not found. Install mingw-w64-common (mingw-w64 headers)
-or set WHP_HEADERS to a directory containing winhvplatform.h, winhvplatformdefs.h
-and winhvemulation.h"
-    echo "  staging WHP headers from ${dir}..."
-    mkdir -p "${S}/include/whp"
-    cp "${PROJECT_ROOT}"/compat/whp/*.h "${S}/include/whp/"
-    cp "${dir}/winhvplatform.h" "${dir}/winhvplatformdefs.h" "${dir}/winhvemulation.h" "${S}/include/whp/"
-}
-
-# stage_hvf_headers <sysroot>
-#
-# QEMU's HVF accelerator includes <Hypervisor/Hypervisor.h>. Hypervisor.framework
-# cannot be linked into a Cosmopolitan program (it is loaded at run time), so
-# compat/hvf provides just the types, constants and prototypes QEMU uses, with
-# every call going through a table filled in by cosmo_dlopen().
-stage_hvf_headers() {
-    local S=$1
-    mkdir -p "${S}/include/hvf"
-    cp -r "${PROJECT_ROOT}"/compat/hvf/. "${S}/include/hvf/"
-}
-
-build_deps() {
-    local arch=$1 S=$2 B=$3
-    local cc="${arch}-cosmo-cc" ar="${arch}-cosmo-ar" ranlib="${arch}-cosmo-ranlib"
-    local host_triplet="${arch}-linux"
-    local wrapper; wrapper="$(exe_wrapper_for "$arch")"
-    export CC="${cc}" AR="${ar}" RANLIB="${ranlib}"
-
-    # zlib
-    mkdir -p "${B}/zlib" && cp -r "${SRC_DIR}/zlib-${ZLIB_VERSION}/." "${B}/zlib"
-    run_logged "${arch}-zlib" bash -c "cd '${B}/zlib' && ./configure --prefix='${S}' --static && make -j${JOBS} && make install"
-
-    # pcre2
-    mkdir -p "${B}/pcre2" && cd "${B}/pcre2"
-    run_logged "${arch}-pcre2" bash -c "'${SRC_DIR}/pcre2-${PCRE2_VERSION}/configure' --prefix='${S}' --host=${host_triplet} --disable-shared --enable-static && make -j${JOBS} && make install"
-
-    # libffi (static trampolines need a raw mmap of the exec file, unsupported here)
-    mkdir -p "${B}/libffi" && cd "${B}/libffi"
-    run_logged "${arch}-libffi" bash -c "'${SRC_DIR}/libffi-${LIBFFI_VERSION}/configure' --prefix='${S}' --host=${host_triplet} --disable-shared --enable-static --disable-exec-static-tramp && make -j${JOBS} && make install"
-    unset CC AR RANLIB
-
-    # glib: only glib, gmodule and gthread are needed by QEMU. gio does not
-    # compile against cosmocc, so build those targets and stage them by hand.
-    local cross="${B}/cross.txt" glibb="${B}/glib"
-    local cpu_family=${arch}
-    cat > "${cross}" <<EOF
-[binaries]
-c = '${arch}-cosmo-cc'
-cpp = '${arch}-cosmo-c++'
-ar = '${arch}-cosmo-ar'
-ranlib = '${arch}-cosmo-ranlib'
-strip = '${arch}-cosmo-strip'
-pkg-config = 'pkg-config'
-exe_wrapper = [$(printf "'%s'," ${wrapper} | sed 's/,$//')]
-
-[built-in options]
-pkg_config_path = '${S}/lib/pkgconfig'
-c_args = ['-I${S}/include']
-c_link_args = ['-L${S}/lib']
-
-[host_machine]
-system = 'linux'
-cpu_family = '${cpu_family}'
-cpu = '${arch}'
-endian = 'little'
-
-[properties]
-needs_exe_wrapper = true
-EOF
-    run_logged "${arch}-glib-configure" env PKG_CONFIG_LIBDIR="${S}/lib/pkgconfig" \
-        meson setup "${glibb}" "${SRC_DIR}/glib" --cross-file "${cross}" \
-        --prefix="${S}" --default-library=static --wrap-mode=nodownload \
-        -Dtests=false -Dglib_debug=disabled -Dintrospection=disabled -Dnls=disabled \
-        -Dselinux=disabled -Dxattr=false -Dlibmount=disabled -Dlibelf=disabled \
-        -Dsysprof=disabled -Dman-pages=disabled -Ddtrace=disabled -Dsystemtap=disabled
-    run_logged "${arch}-glib-build" ninja -C "${glibb}" -j"${JOBS}" \
-        glib/libglib-2.0.a gmodule/libgmodule-2.0.a gthread/libgthread-2.0.a \
-        subprojects/proxy-libintl/libintl.a
-
-    echo "  staging glib into sysroot..."
-    local g="${SRC_DIR}/glib" inc="${S}/include/glib-2.0"
-    mkdir -p "${inc}/glib/deprecated" "${inc}/gmodule" "${S}/lib/glib-2.0/include" "${S}/lib/pkgconfig"
-    cp "${glibb}/glib/libglib-2.0.a" "${glibb}/gmodule/libgmodule-2.0.a" \
-       "${glibb}/gthread/libgthread-2.0.a" "${glibb}/subprojects/proxy-libintl/libintl.a" "${S}/lib/"
-    cp "${g}"/glib/*.h "${glibb}"/glib/*.h "${inc}/glib/"
-    cp "${g}"/glib/deprecated/*.h "${inc}/glib/deprecated/"
-    cp "${g}/glib/glib.h" "${g}/glib/glib-unix.h" "${inc}/"
-    cp "${glibb}/glib/glibconfig.h" "${S}/lib/glib-2.0/include/"
-    cp "${g}"/gmodule/*.h "${glibb}"/gmodule/*.h "${inc}/gmodule/"
-    cp "${g}/gmodule/gmodule.h" "${inc}/"
-    cp "${g}/subprojects/proxy-libintl/libintl.h" "${S}/include/"
-    local pc
-    for pc in glib-2.0 gthread-2.0 gmodule-2.0 gmodule-no-export-2.0; do
-        cp "${glibb}/meson-private/${pc}.pc" "${S}/lib/pkgconfig/"
-    done
-
-    # pixman (display and framebuffer code in the system emulators)
-    if [ -n "${SYSTEM_TARGETS}" ]; then
-        run_logged "${arch}-pixman-configure" env PKG_CONFIG_LIBDIR="${S}/lib/pkgconfig" \
-            meson setup "${B}/pixman" "${SRC_DIR}/pixman-${PIXMAN_VERSION}" --cross-file "${cross}" \
-            --prefix="${S}" --default-library=static --wrap-mode=nodownload \
-            -Dtests=disabled -Ddemos=disabled -Dgtk=disabled -Dlibpng=disabled \
-            -Dopenmp=disabled -Dtimers=false -Dgnuplot=false
-        run_logged "${arch}-pixman-build" ninja -C "${B}/pixman" -j"${JOBS}" install
-        stage_kernel_headers "${arch}" "${S}"
-        # WHPX only exists for x86_64 guests on x86_64 (Windows) hosts
-        if [ "${arch}" = "x86_64" ] && [[ " ${SYSTEM_TARGETS} " == *" x86_64 "* ]]; then
-            stage_whp_headers "${S}"
-        fi
-        # HVF only exists for aarch64 guests on aarch64 (Apple Silicon) hosts
-        if [ "${arch}" = "aarch64" ] && [[ " ${SYSTEM_TARGETS} " == *" aarch64 "* ]]; then
-            stage_hvf_headers "${S}"
-        fi
-    fi
-}
-
-# guest_firmware_files <guest>: regex of files under share/qemu to embed
-guest_firmware_regex() {
-    case "$1" in
-        x86_64) echo '^(bios(-256k|-microvm)?\.bin|qboot\.rom|vgabios.*\.bin|kvmvapic\.bin|linuxboot(_dma)?\.bin|multiboot(_dma)?\.bin|pvh\.bin|sgabios\.bin|efi-.*\.rom|edk2-(x86_64|i386)-.*\.fd|edk2-licenses\.txt|firmware/.*(x86_64|i386).*\.json|keymaps/.+)$' ;;
-        aarch64) echo '^(vgabios.*\.bin|efi-.*\.rom|edk2-aarch64-.*\.fd|edk2-licenses\.txt|firmware/.*aarch64.*\.json|keymaps/.+)$' ;;
-    esac
-}
-
-# stage_firmware <guest> <qemu build dir> <destination>
-#
-# Build and copy the subset of QEMU's installed data files that one guest
-# architecture needs into <destination>/share/qemu.
-stage_firmware() {
-    local guest=$1 qb=$2 dest=$3
-    local list="${qb}/fw-${guest}.tsv"
-    "${qb}/pyvenv/bin/meson" introspect --installed "${qb}" | python3 -c '
-import json, os, re, sys
-qb, guest_re, out = sys.argv[1:4]
-want = re.compile(guest_re)
-rows = []
-for src, dst in json.load(sys.stdin).items():
-    if "/share/qemu/" not in dst:
-        continue
-    rel = dst.split("/share/qemu/", 1)[1]
-    if want.match(rel):
-        rows.append((src, rel))
-with open(out, "w") as f:
-    for src, rel in sorted(rows, key=lambda r: r[1]):
-        f.write("%s\t%s\n" % (src, rel))
-' "${qb}" "$(guest_firmware_regex "$guest")" "${list}"
-    [ -s "${list}" ] || die "no firmware selected for ${guest}"
-
-    # Generated files under the build directory that do not exist yet have to
-    # be built (edk2 images are decompressed, keymaps generated). Some, like
-    # the firmware descriptors, are written by configure and are not ninja
-    # targets at all, so only ask for the missing ones.
-    local targets="" src rel
-    while IFS=$'\t' read -r src rel; do
-        if [ ! -f "${src}" ] && [ "${src#"${qb}/"}" != "${src}" ]; then
-            targets+=" ${src#"${qb}/"}"
-        fi
-    done < "${list}"
-    if [ -n "${targets}" ]; then
-        # shellcheck disable=SC2086
-        (cd "${qb}" && ninja -j"${JOBS}" ${targets}) >"${LOG_DIR}/firmware-${guest}.log" 2>&1 \
-            || { tail -n 30 "${LOG_DIR}/firmware-${guest}.log" >&2; die "building firmware for ${guest} failed"; }
-    fi
-
-    rm -rf "${dest}"
-    local src rel
-    while IFS=$'\t' read -r src rel; do
-        [ -f "${src}" ] || die "firmware file missing: ${src}"
-        mkdir -p "${dest}/share/qemu/$(dirname "${rel}")"
-        cp "${src}" "${dest}/share/qemu/${rel}"
-    done < "${list}"
-    echo "  staged $(wc -l < "${list}") firmware files for ${guest} ($(du -sh "${dest}" | cut -f1))"
-}
-
-build_qemu() {
-    local arch=$1 S=$2 B=$3
-    local qb="${B}/qemu"
-    mkdir -p "${qb}" && cd "${qb}"
-
-    # cosmocc's aarch64 GCC 14.1 crashes (ICE in emit_library_call_value_1)
-    # compiling qemu-io-cmds.c at -O2 unless inlining of non-inline functions
-    # is disabled.
-    # Compile QEMU with -mcosmo (_COSMO_SOURCE), which exposes Cosmopolitan
-    # extensions such as ShowCrashReports(); the two names it collides with are
-    # patched in the QEMU sources. The compiler wrappers add the flag (see
-    # COSMO_MCOSMO), and the variable stays exported so that the reconfigure
-    # ninja runs after a meson.build change sees it too.
-    export COSMO_MCOSMO=1
-    local extra_cflags="-I${S}/include"
-    if [ "${arch}" = "aarch64" ]; then
-        extra_cflags="${extra_cflags} -fno-inline-functions"
-    fi
-
-    # System emulators, and KVM when a guest matches this host architecture
-    local system_flags kvm_flag="--disable-kvm" targets="" guest
-    if [ -n "${SYSTEM_TARGETS}" ]; then
-        for guest in ${SYSTEM_TARGETS}; do
-            targets+="${guest}-softmmu,"
-            [ "${guest}" = "${arch}" ] && kvm_flag="--enable-kvm"
-        done
-        # WHPX (Windows Hypervisor Platform, loaded with cosmo_dlopen at run
-        # time on Windows) for x86_64 guests on the x86_64 host slice
-        local whpx_flag=""
-        if [ "${arch}" = "x86_64" ] && [[ " ${SYSTEM_TARGETS} " == *" x86_64 "* ]]; then
-            whpx_flag="--enable-whpx"
-            extra_cflags="${extra_cflags} -I${S}/include/whp"
-        fi
-        # HVF (Hypervisor.framework, loaded with cosmo_dlopen at run time on
-        # Apple Silicon) for aarch64 guests on the aarch64 host slice
-        local hvf_flag=""
-        if [ "${arch}" = "aarch64" ] && [[ " ${SYSTEM_TARGETS} " == *" aarch64 "* ]]; then
-            hvf_flag="--enable-hvf"
-            extra_cflags="${extra_cflags} -I${S}/include/hvf"
-        fi
-        system_flags=(--target-list="${targets%,}" ${kvm_flag} ${whpx_flag} ${hvf_flag})
-    else
-        system_flags=(--disable-system)
-    fi
-
-    # Notes on the flags:
-    #  --prefix=/zip              data files are looked up in the embedded zip
-    #  --disable-relocatable      otherwise QEMU resolves its data directory
-    #                             relative to the executable, not to /zip
-    #  --disable-stack-protector  cosmocc constructors run before TLS is set up
-    #  --with-coroutine=ucontext  the sigaltstack backend deadlocks under cosmo
-    #  --disable-plugins          TCG plugins are loaded with dlopen
-    #  --disable-png              never link a host libpng
-    #  the rest strips everything cosmocc cannot build or QEMU does not need
-    run_logged "${arch}-qemu-configure" env \
-        PKG_CONFIG_PATH="${S}/lib/pkgconfig" PKG_CONFIG_LIBDIR="${S}/lib/pkgconfig" \
-        "${SRC_DIR}/qemu/configure" \
-        --prefix=/zip --disable-relocatable \
-        --cross-prefix="${arch}-cosmo-" --cpu="${arch}" --host-cc=cc \
-        --extra-cflags="${extra_cflags}" --extra-ldflags="-L${S}/lib" \
-        "${system_flags[@]}" \
-        --disable-user --disable-docs --disable-guest-agent \
-        --enable-tools --disable-werror \
-        --disable-stack-protector --with-coroutine=ucontext \
-        --disable-plugins --disable-png \
-        --disable-linux-aio --disable-linux-io-uring \
-        --disable-vhost-user --disable-vhost-kernel --disable-vhost-user-blk-server \
-        --disable-vduse-blk-export --disable-libvduse \
-        --disable-curl --disable-gnutls --disable-nettle --disable-gcrypt \
-        --disable-zstd --disable-bzip2 --disable-fuse \
-        --disable-seccomp --disable-attr --disable-libnfs --disable-libssh \
-        --disable-rbd --disable-glusterfs --disable-capstone --disable-slirp
-
-    # A later meson.build change makes ninja regenerate the build; without
-    # this, the regenerated build would pick up host libraries.
-    export PKG_CONFIG_PATH="${S}/lib/pkgconfig" PKG_CONFIG_LIBDIR="${S}/lib/pkgconfig"
-    local ninja_targets=(qemu-img)
-    for guest in ${SYSTEM_TARGETS}; do
-        ninja_targets+=("qemu-system-${guest}")
-    done
-    run_logged "${arch}-qemu-build" ninja -j"${JOBS}" "${ninja_targets[@]}"
-    unset PKG_CONFIG_PATH PKG_CONFIG_LIBDIR
-
-    [ -f qemu-img ] || die "qemu-img not found after ${arch} build"
-    cp qemu-img "${B}/qemu-img.elf"
-    for guest in ${SYSTEM_TARGETS}; do
-        [ -f "qemu-system-${guest}" ] || die "qemu-system-${guest} not found after ${arch} build"
-        cp "qemu-system-${guest}" "${B}/qemu-system-${guest}.elf"
-        # the system emulators carry a .zip section that apelink wants fixed up
-        fixupobj "${B}/qemu-system-${guest}.elf"
-    done
-    echo "  built ${B}/qemu-img.elf ${SYSTEM_TARGETS:+and ${SYSTEM_TARGETS}}"
-}
 
 FIRMWARE_DIR="${BUILD_DIR}/firmware"
 firmware_done=0
@@ -625,61 +205,7 @@ echo "================================================"
 echo "Creating fat binaries with apelink"
 echo "================================================"
 
-# A copy of the macOS arm64 loader source that signs itself (see private_loader)
-APE_M1_SOURCE="${BUILD_DIR}/ape-m1.c"
-cp "${COSMO_BIN}/ape-m1.c" "${APE_M1_SOURCE}"
-patch -s -p1 "${APE_M1_SOURCE}" < "${PROJECT_ROOT}/compat/ape/ape-m1-hypervisor.patch" \
-    || die "compat/ape/ape-m1-hypervisor.patch does not apply to this cosmocc's ape-m1.c"
-
-# link_fat <program> <output>
-link_fat() {
-    local program=$1 output=$2
-    local ape_args=() elfs=() arch
-    for arch in $ARCHES; do
-        ape_args+=(-l "${COSMO_BIN}/ape-${arch}.elf")
-        elfs+=("${BUILD_DIR}/${arch}/${program}.elf")
-    done
-    if [[ " ${ARCHES} " == *" aarch64 "* ]]; then
-        ape_args+=(-M "${APE_M1_SOURCE}")
-    fi
-    apelink "${ape_args[@]}" -o "${output}" "${elfs[@]}"
-    chmod +x "${output}"
-    private_loader "${output}"
-}
-
-# The loader that runs an APE on Apple Silicon is compiled on first use and
-# cached in ${TMPDIR:-$HOME} under a name shared by all APE programs. Ours is
-# modified to sign itself with the hypervisor entitlement (compat/ape), so it
-# gets its own cache name (versioned: bump it when the loader changes, a cached
-# loader of the same name is reused as is) and must not defer to a system-wide
-# "ape". This edits two lines of the shell script that apelink puts at the start
-# of the file, with replacements of the same length, so no offset in it changes;
-# the build fails if apelink's script is not exactly what is expected.
-private_loader() {
-    python3 - "$1" <<'PYEOF'
-import sys
-path = sys.argv[1]
-edits = (
-    # never use an "ape" found in PATH: replace the test (always false), so
-    # the "exec ape" after it can never run
-    (b'&& type ape >/dev/null 2>&1 && exec ape "$o" "$@"',
-     b'&& false    >/dev/null 2>&1 && exec ape "$o" "$@"'),
-    # the cache name of the loader (change the number with the loader)
-    (b't="${TMPDIR:-${HOME:-.}}/.ape-1.10"',
-     b't="${TMPDIR:-${HOME:-.}}/.cqape-01"'),
-)
-with open(path, "r+b") as f:
-    head = bytearray(f.read(262144))
-    for old, new in edits:
-        assert len(old) == len(new)
-        n = head.count(old)
-        if n < 1 or n > 2:
-            sys.exit("apelink's script header is not as expected: %r found %d times" % (old, n))
-        head = head.replace(old, new)
-    f.seek(0)
-    f.write(head)
-PYEOF
-}
+prepare_loader_source
 
 link_fat qemu-img "${OUTPUT_BINARY}"
 ls -lh "${OUTPUT_BINARY}"
@@ -700,47 +226,6 @@ fi
 # ---------------------------------------------------------------------------
 # Licenses: QEMU is GPL-2.0, the static dependencies carry their own terms
 # ---------------------------------------------------------------------------
-
-write_notices() {
-    local out=$1
-    {
-        echo "The QEMU binaries statically link the following libraries."
-        echo "QEMU itself is licensed under the GPL-2.0 (see COPYING)."
-        echo "Source for the binaries, including all patches, is available at"
-        echo "https://github.com/bjia56/cosmo-qemu"
-        for entry in \
-            "glib ${GLIB_VERSION}|${SRC_DIR}/glib/COPYING" \
-            "proxy-libintl ${PROXY_LIBINTL_VERSION}|${SRC_DIR}/glib/subprojects/proxy-libintl/COPYING" \
-            "pcre2 ${PCRE2_VERSION}|${SRC_DIR}/pcre2-${PCRE2_VERSION}/LICENCE.md" \
-            "libffi ${LIBFFI_VERSION}|${SRC_DIR}/libffi-${LIBFFI_VERSION}/LICENSE" \
-            "zlib ${ZLIB_VERSION}|${SRC_DIR}/zlib-${ZLIB_VERSION}/LICENSE" \
-            "pixman ${PIXMAN_VERSION}|${SRC_DIR}/pixman-${PIXMAN_VERSION}/COPYING"; do
-            name="${entry%%|*}"; file="${entry#*|}"
-            echo ""
-            echo "================================================================"
-            echo "${name}"
-            echo "================================================================"
-            if [ -f "${file}" ]; then cat "${file}"; else echo "(license file not found: ${file##*/})"; fi
-        done
-        if [ -n "${SYSTEM_TARGETS}" ]; then
-            echo ""
-            echo "================================================================"
-            echo "mingw-w64 Windows Hypervisor Platform headers (build time only)"
-            echo "================================================================"
-            echo "The qemu-system-x86_64 build for x86_64 hosts is compiled against the"
-            echo "winhvplatform.h, winhvplatformdefs.h and winhvemulation.h headers of the"
-            echo "mingw-w64 project (ZPL-2.1, https://www.mingw-w64.org/), for the type and"
-            echo "constant definitions of the WHPX accelerator."
-            echo ""
-            echo "================================================================"
-            echo "Firmware embedded in the system emulators"
-            echo "================================================================"
-            echo "SeaBIOS, edk2 and the other firmware and data files under share/qemu are"
-            echo "built or bundled by QEMU; see edk2-licenses.txt inside the binaries and"
-            echo "the QEMU source tree (pc-bios/README and each component's license)."
-        fi
-    } > "${out}"
-}
 
 cp "${SRC_DIR}/qemu/COPYING" "${OUTPUT_LICENSE}"
 write_notices "${OUTPUT_NOTICES}"
