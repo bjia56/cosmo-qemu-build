@@ -1,0 +1,60 @@
+diff --git a/gdbstub/gdbstub.c b/gdbstub/gdbstub.c
+index b1def7e..d0fe70b 100644
+--- a/gdbstub/gdbstub.c
++++ b/gdbstub/gdbstub.c
+@@ -934,7 +934,7 @@ static int cmd_parse_params(const char *data, const char *schema,
+     return 0;
+ }
+ 
+-static inline int startswith(const char *string, const char *pattern)
++static inline int gdb_startswith(const char *string, const char *pattern)
+ {
+   return !strncmp(string, pattern, strlen(pattern));
+ }
+@@ -954,7 +954,7 @@ static bool process_string_cmd(const char *data,
+         void *user_ctx = NULL;
+         g_assert(cmd->handler && cmd->cmd);
+ 
+-        if ((cmd->cmd_startswith && !startswith(data, cmd->cmd)) ||
++        if ((cmd->cmd_startswith && !gdb_startswith(data, cmd->cmd)) ||
+             (!cmd->cmd_startswith && strcmp(cmd->cmd, data))) {
+             continue;
+         }
+diff --git a/target/i386/tcg/int_helper.c b/target/i386/tcg/int_helper.c
+index 1a02e9d..0e2db8c 100644
+--- a/target/i386/tcg/int_helper.c
++++ b/target/i386/tcg/int_helper.c
+@@ -18,6 +18,14 @@
+  */
+ 
+ #include "qemu/osdep.h"
++
++#ifdef __COSMOPOLITAN__
++/*
++ * Cosmopolitan's <libc/stdio/rand.h> (under -mcosmo) defines rdrand as a macro,
++ * which would rename the rdrand TCG helper differently in each file.
++ */
++#undef rdrand
++#endif
+ #include "qemu/log.h"
+ #include "cpu.h"
+ #include "exec/exec-all.h"
+diff --git a/target/i386/tcg/translate.c b/target/i386/tcg/translate.c
+index 5d729e6..d86608b 100644
+--- a/target/i386/tcg/translate.c
++++ b/target/i386/tcg/translate.c
+@@ -18,6 +18,14 @@
+  */
+ #include "qemu/osdep.h"
+ 
++#ifdef __COSMOPOLITAN__
++/*
++ * Cosmopolitan's <libc/stdio/rand.h> (under -mcosmo) defines rdrand as a macro,
++ * which would rename the rdrand TCG helper differently in each file.
++ */
++#undef rdrand
++#endif
++
+ #include "qemu/host-utils.h"
+ #include "cpu.h"
+ #include "exec/exec-all.h"

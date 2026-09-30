@@ -212,6 +212,14 @@ for arch in $ARCHES; do
 #!/bin/bash
 args=()
 for a in "\$@"; do [[ \$a == -m64 ]] || args+=("\$a"); done
+# -mcosmo has to be seen by the cosmocc driver itself; QEMU's link step passes
+# its flags in a response file, where the driver cannot see them. Only add it to
+# real compile/link/preprocess invocations, not to "--version" style probes.
+if [[ -n \${COSMO_MCOSMO:-} ]]; then
+    for a in "\${args[@]}"; do
+        case \$a in -c|-o|-E|-S) args=(-mcosmo "\${args[@]}"); break ;; esac
+    done
+fi
 exec "${COSMO_BIN}/${arch}-unknown-cosmo-cc" "\${args[@]}"
 EOF
     done
@@ -481,6 +489,12 @@ build_qemu() {
     # cosmocc's aarch64 GCC 14.1 crashes (ICE in emit_library_call_value_1)
     # compiling qemu-io-cmds.c at -O2 unless inlining of non-inline functions
     # is disabled.
+    # Compile QEMU with -mcosmo (_COSMO_SOURCE), which exposes Cosmopolitan
+    # extensions such as ShowCrashReports(); the two names it collides with are
+    # patched in the QEMU sources. The compiler wrappers add the flag (see
+    # COSMO_MCOSMO), and the variable stays exported so that the reconfigure
+    # ninja runs after a meson.build change sees it too.
+    export COSMO_MCOSMO=1
     local extra_cflags="-I${S}/include"
     if [ "${arch}" = "aarch64" ]; then
         extra_cflags="${extra_cflags} -fno-inline-functions"
@@ -566,6 +580,7 @@ for arch in $ARCHES; do
     mkdir -p "${B}" "${S}"
     build_deps "${arch}" "${S}" "${B}"
     build_qemu "${arch}" "${S}" "${B}"
+    unset COSMO_MCOSMO
 
     # Firmware does not depend on the host architecture: take it from the
     # first build
