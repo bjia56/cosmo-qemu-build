@@ -16,18 +16,6 @@ run_logged() {
     fi
 }
 
-# run_logged <name> <command...>: run quietly, dump the log tail on failure
-run_logged() {
-    local name=$1; shift
-    local log="${LOG_DIR}/${name}.log"
-    echo "  ${name}..."
-    if ! "$@" >"${log}" 2>&1; then
-        echo "Error: step '${name}' failed. Last lines of ${log}:" >&2
-        tail -n 40 "${log}" >&2
-        exit 1
-    fi
-}
-
 # download <sha256> <output name> <url>...: try each URL until one matches
 download() {
     local sha=$1 name=$2; shift 2

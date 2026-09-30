@@ -6,7 +6,7 @@ write_notices() {
     local out=$1
     {
         echo "The QEMU binaries statically link the following libraries."
-        echo "QEMU itself is licensed under the GPL-2.0 (see COPYING)."
+        echo "QEMU itself is licensed under the GPL-2.0 (see COPYING in this archive)."
         echo "Source for the binaries, including all patches, is available at"
         echo "https://github.com/bjia56/cosmo-qemu-build"
         for entry in \

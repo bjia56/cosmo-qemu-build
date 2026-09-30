@@ -25,7 +25,7 @@ Use `-machine accel=kvm:tcg` (or `whpx:tcg`, `hvf:tcg`) to try an accelerator an
 **HVF and the loader.** Hypervisor.framework only works for a process signed with the
 `com.apple.security.hypervisor` entitlement, and on Apple Silicon that process is the small loader the
 executable compiles on its first run (this needs the Xcode command line tools, as for any Cosmopolitan
-program). The executables use their own loader, `q.ape-01` in `${TMPDIR:-$HOME}`, which signs itself with the
+program). The executables use their own loader, `.q.ape-01` in `${TMPDIR:-$HOME}`, which signs itself with the
 entitlement on first use, so HVF works without any setup. See [`patches/README.md`](patches/README.md).
 
 Not included: network block drivers (curl, ssh, nfs, rbd, gluster), encryption backed by
@@ -35,8 +35,10 @@ graphics front ends (SDL, GTK, ...), vhost and user-mode networking (slirp).
 ## Getting the binaries
 
 The [Build workflow](.github/workflows/build.yml) builds everything and uploads one artifact per
-program (the binary, `COPYING` and `THIRD_PARTY_NOTICES.txt`). There are no releases yet. Downloaded
-artifacts lose the executable bit: run `chmod +x qemu-*.com`, or start them with `sh ./qemu-img.com`.
+program. There are no releases yet. Downloaded artifacts lose the executable bit: run
+`chmod +x qemu-*.com`, or start them with `sh ./qemu-img.com`. The license texts are inside every
+executable (Cosmopolitan serves the zip archive appended to it): `unzip -p qemu-img.com COPYING` and
+`unzip -p qemu-img.com THIRD_PARTY_NOTICES.txt`.
 
 ## Building from source
 
@@ -66,9 +68,9 @@ The build scripts in this repository are MIT - See [LICENSE](LICENSE). The patch
 and glib and carry their licenses (GPL-2.0-or-later and LGPL-2.1-or-later).
 
 The binaries are built from [QEMU](https://www.qemu.org/), which is licensed under the GPL-2.0, see
-[COPYING](https://gitlab.com/qemu-project/qemu/-/blob/master/COPYING); it ships next to each binary.
+[COPYING](https://gitlab.com/qemu-project/qemu/-/blob/master/COPYING); it is embedded in each binary.
 They statically link glib (LGPL-2.1+), pcre2 (BSD), libffi (MIT), zlib (zlib) and pixman (MIT); their
-license texts are in `THIRD_PARTY_NOTICES.txt`.
+license texts are in the embedded `THIRD_PARTY_NOTICES.txt`.
 
 The corresponding source for a binary is the QEMU tag it was built from (`QEMU_VERSION` in
 [`scripts/build.sh`](scripts/build.sh)) together with the patches and scripts in this repository at the

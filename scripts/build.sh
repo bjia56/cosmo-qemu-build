@@ -14,7 +14,9 @@
 #                                            architecture, WHPX (x86_64) and HVF
 #                                            (aarch64) for Windows and Apple
 #                                            Silicon, and TCG everywhere
-#   out/COPYING, out/THIRD_PARTY_NOTICES.txt
+#
+# COPYING and THIRD_PARTY_NOTICES.txt are embedded in each executable's zip
+# archive (unzip -p qemu-img.com COPYING).
 #
 # The emulators pick an accelerator at run time (-machine accel=kvm:tcg): KVM
 # only works on Linux hosts where /dev/kvm is usable and the guest architecture
@@ -215,7 +217,32 @@ echo "================================================"
 
 prepare_loader_source
 
+# ---------------------------------------------------------------------------
+# Licenses: QEMU is GPL-2.0, the static dependencies carry their own terms.
+# They are stored inside every executable (Cosmopolitan serves the zip archive
+# appended to it), so nothing has to be distributed next to the binaries:
+#   unzip -p qemu-img.com COPYING
+# ---------------------------------------------------------------------------
+
+LICENSE_DIR="${BUILD_DIR}/licenses"
+mkdir -p "${LICENSE_DIR}"
+cp "${SRC_DIR}/qemu/COPYING" "${LICENSE_DIR}/COPYING"
+write_notices "${LICENSE_DIR}/THIRD_PARTY_NOTICES.txt"
+
+# embed_licenses <binary>
+embed_licenses() {
+    (cd "${LICENSE_DIR}" && zip -q "$1" COPYING THIRD_PARTY_NOTICES.txt)
+    python3 - "$1" <<'PYEOF'
+import sys, zipfile
+names = zipfile.ZipFile(sys.argv[1]).namelist()
+for f in ("COPYING", "THIRD_PARTY_NOTICES.txt"):
+    if f not in names:
+        sys.exit("%s is missing from %s" % (f, sys.argv[1]))
+PYEOF
+}
+
 link_fat qemu-img "${OUT_DIR}/qemu-img.com"
+embed_licenses "${OUT_DIR}/qemu-img.com"
 ls -lh "${OUT_DIR}/qemu-img.com"
 
 if [ -n "${SYSTEM_TARGETS}" ]; then
@@ -226,17 +253,10 @@ if [ -n "${SYSTEM_TARGETS}" ]; then
         # looks for /zip/share/qemu/..., which Cosmopolitan serves from the
         # zip archive appended to the binary
         (cd "${FIRMWARE_DIR}/${guest}" && zip -qr "${binary}" share)
+        embed_licenses "${binary}"
         ls -lh "${binary}"
     done
 fi
-
-# ---------------------------------------------------------------------------
-# Licenses: QEMU is GPL-2.0, the static dependencies carry their own terms
-# ---------------------------------------------------------------------------
-
-cp "${SRC_DIR}/qemu/COPYING" "${OUT_DIR}/COPYING"
-write_notices "${OUT_DIR}/THIRD_PARTY_NOTICES.txt"
-echo "Copied licenses to ${OUT_DIR}"
 
 # ---------------------------------------------------------------------------
 # Smoke tests (x86_64 hosts only; the aarch64 halves are tested in CI)

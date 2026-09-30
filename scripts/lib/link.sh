@@ -22,7 +22,7 @@ link_fat() {
 # sign itself with the hypervisor entitlement (compat/ape). Two lines of the shell
 # script that apelink writes at the start of each file are edited, with
 # replacements of the same length so that no offset in the file changes: the
-# loader is stored as q.ape-01 in ${TMPDIR:-$HOME} instead of apelink's default
+# loader is stored as .q.ape-01 in ${TMPDIR:-$HOME} instead of apelink's default
 # path, and a loader found in PATH is never used. The build fails if the script
 # is not exactly what is expected. Change the loader's number when the loader
 # changes: a stored loader is reused as is.
@@ -35,10 +35,9 @@ edits = (
     # the "exec ape" after it can never run
     (b'&& type ape >/dev/null 2>&1 && exec ape "$o" "$@"',
      b'&& false    >/dev/null 2>&1 && exec ape "$o" "$@"'),
-    # where the loader is stored (change the number with the loader; the
-    # trailing space keeps the length)
+    # where the loader is stored (change the number with the loader)
     (b't="${TMPDIR:-${HOME:-.}}/.ape-1.10"',
-     b't="${TMPDIR:-${HOME:-.}}/q.ape-01" '),
+     b't="${TMPDIR:-${HOME:-.}}/.q.ape-01"'),
 )
 with open(path, "r+b") as f:
     head = bytearray(f.read(262144))

@@ -51,7 +51,7 @@ copy of cosmocc's `ape-m1.c` (the source of that loader) so that the loader sign
 - Signing is silent. If it fails, nothing is printed; QEMU reports that macOS denied access to
   Hypervisor.framework when HVF is requested.
 
-The executables store this loader as `q.ape-01`, and a loader found in `PATH` is never used, so no other
+The executables store this loader as `.q.ape-01`, and a loader found in `PATH` is never used, so no other
 program's loader can stand in for the signed one. This is done by `scripts/build.sh` with same-length
 replacements in two lines of the shell script that `apelink` writes at the start of each file (the build
 fails if those lines are not exactly as expected). Change the loader's number when the loader changes,

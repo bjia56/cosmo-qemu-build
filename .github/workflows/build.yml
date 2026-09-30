@@ -49,30 +49,21 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: qemu-img
-          path: |
-            out/qemu-img.com
-            out/COPYING
-            out/THIRD_PARTY_NOTICES.txt
+          path: out/qemu-img.com
           if-no-files-found: error
 
       - name: Upload qemu-system-x86_64
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: qemu-system-x86_64
-          path: |
-            out/qemu-system-x86_64.com
-            out/COPYING
-            out/THIRD_PARTY_NOTICES.txt
+          path: out/qemu-system-x86_64.com
           if-no-files-found: error
 
       - name: Upload qemu-system-aarch64
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: qemu-system-aarch64
-          path: |
-            out/qemu-system-aarch64.com
-            out/COPYING
-            out/THIRD_PARTY_NOTICES.txt
+          path: out/qemu-system-aarch64.com
           if-no-files-found: error
 
       - name: Upload build logs on failure
