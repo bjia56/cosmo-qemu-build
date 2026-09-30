@@ -1,0 +1,171 @@
+diff --git a/accel/hvf/hvf-accel-ops.c b/accel/hvf/hvf-accel-ops.c
+index d60874d..d532203 100644
+--- a/accel/hvf/hvf-accel-ops.c
++++ b/accel/hvf/hvf-accel-ops.c
+@@ -49,6 +49,7 @@
+ 
+ #include "qemu/osdep.h"
+ #include "qemu/error-report.h"
++#include "qapi/error.h"
+ #include "qemu/main-loop.h"
+ #include "exec/address-spaces.h"
+ #include "exec/exec-all.h"
+@@ -323,6 +324,15 @@ static int hvf_accel_init(MachineState *ms)
+     int pa_range = 36;
+     MachineClass *mc = MACHINE_GET_CLASS(ms);
+ 
++#ifdef __COSMOPOLITAN__
++    Error *err = NULL;
++
++    if (!hvf_cosmo_load(&err)) {
++        error_report_err(err);
++        return -ENODEV;
++    }
++#endif
++
+     if (mc->hvf_get_physical_address_range) {
+         pa_range = mc->hvf_get_physical_address_range(ms);
+         if (pa_range < 0) {
+@@ -331,6 +341,14 @@ static int hvf_accel_init(MachineState *ms)
+     }
+ 
+     ret = hvf_arch_vm_create(ms, (uint32_t)pa_range);
++#ifdef __COSMOPOLITAN__
++    if (ret == HV_DENIED) {
++        error_report("HVF: macOS denied access to Hypervisor.framework; the "
++                     "process needs the com.apple.security.hypervisor "
++                     "entitlement");
++        return -EPERM;
++    }
++#endif
+     assert_hvf_ok(ret);
+ 
+     s = g_new0(HVFState, 1);
+diff --git a/accel/hvf/hvf-cosmo.c b/accel/hvf/hvf-cosmo.c
+new file mode 100644
+index 0000000..f086aa7
+--- /dev/null
++++ b/accel/hvf/hvf-cosmo.c
+@@ -0,0 +1,86 @@
++/*
++ * Loading Hypervisor.framework at run time, for the Cosmopolitan build.
++ *
++ * The framework cannot be linked into a Cosmopolitan executable, so every
++ * hv_*() function the accelerator uses is looked up with cosmo_dlsym() when
++ * the accelerator is initialized (see compat/hvf/Hypervisor/Hypervisor.h).
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#include "qemu/osdep.h"
++#include "qapi/error.h"
++#include "qemu/error-report.h"
++#include <cosmo.h>
++#include <dlfcn.h>
++
++#define HVF_NO_REDIRECT
++#include <Hypervisor/Hypervisor.h>
++
++#define HVF_FRAMEWORK "/System/Library/Frameworks/Hypervisor.framework/Hypervisor"
++#define HVF_LIBSYSTEM "/usr/lib/libSystem.B.dylib"
++
++struct HVFDispatch hvf_dispatch;
++
++void hvf_cosmo_not_loaded(void)
++{
++    error_report("HVF: Hypervisor.framework used before it was loaded");
++    abort();
++}
++
++static bool hvf_bind(void *lib, const char *name, void **slot, Error **errp)
++{
++    void *sym = cosmo_dlsym(lib, name);
++
++    if (!sym) {
++        error_setg(errp, "HVF: %s not found in Hypervisor.framework "
++                   "(macOS 13 or later is required)", name);
++        return false;
++    }
++    *slot = cosmo_dltramp(sym);
++    if (!*slot) {
++        error_setg(errp, "HVF: cannot create a call thunk for %s", name);
++        return false;
++    }
++    return true;
++}
++
++bool hvf_cosmo_load(Error **errp)
++{
++    void *framework, *libsystem;
++
++    if (hvf_dispatch.loaded) {
++        return true;
++    }
++    if (!IsXnuSilicon()) {
++        error_setg(errp, "HVF is only available on macOS with Apple Silicon");
++        return false;
++    }
++    framework = cosmo_dlopen(HVF_FRAMEWORK, RTLD_NOW);
++    if (!framework) {
++        error_setg(errp, "HVF: cannot load Hypervisor.framework: %s",
++                   cosmo_dlerror());
++        return false;
++    }
++    libsystem = cosmo_dlopen(HVF_LIBSYSTEM, RTLD_NOW);
++    if (!libsystem) {
++        error_setg(errp, "HVF: cannot load libSystem: %s", cosmo_dlerror());
++        return false;
++    }
++
++#define HVF_BIND(ret, name, args) \
++    if (!hvf_bind(framework, #name, (void **)&hvf_dispatch.name, errp)) { \
++        return false; \
++    }
++    HVF_FUNCTIONS(HVF_BIND)
++#undef HVF_BIND
++#define HVF_BIND(ret, name, args) \
++    if (!hvf_bind(libsystem, #name, (void **)&hvf_dispatch.name, errp)) { \
++        return false; \
++    }
++    HVF_SYSTEM_FUNCTIONS(HVF_BIND)
++#undef HVF_BIND
++
++    hvf_dispatch.loaded = true;
++    return true;
++}
+diff --git a/accel/hvf/meson.build b/accel/hvf/meson.build
+index fc52cb7..c5462be 100644
+--- a/accel/hvf/meson.build
++++ b/accel/hvf/meson.build
+@@ -4,4 +4,7 @@ hvf_ss.add(files(
+   'hvf-accel-ops.c',
+ ))
+ 
++if host_os == 'cosmopolitan'
++  hvf_ss.add(files('hvf-cosmo.c'))
++endif
+ specific_ss.add_all(when: 'CONFIG_HVF', if_true: hvf_ss)
+diff --git a/meson.build b/meson.build
+index ac84d95..fdf49f1 100644
+--- a/meson.build
++++ b/meson.build
+@@ -850,8 +850,17 @@ endif
+ 
+ hvf = not_found
+ if get_option('hvf').allowed()
+-  hvf = dependency('appleframeworks', modules: 'Hypervisor',
+-                   required: get_option('hvf'))
++  if host_os == 'cosmopolitan'
++    # Hypervisor.framework is loaded at run time (accel/hvf/hvf-cosmo.c); only
++    # its arm64 interface exists, and only Apple Silicon can load it
++    if host_machine.cpu() == 'aarch64' and \
++       cc.has_header('Hypervisor/Hypervisor.h', required: get_option('hvf'))
++      hvf = declare_dependency()
++    endif
++  else
++    hvf = dependency('appleframeworks', modules: 'Hypervisor',
++                     required: get_option('hvf'))
++  endif
+   if hvf.found()
+     accelerators += 'CONFIG_HVF'
+   endif

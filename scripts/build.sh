@@ -332,6 +332,18 @@ and winhvemulation.h"
     cp "${dir}/winhvplatform.h" "${dir}/winhvplatformdefs.h" "${dir}/winhvemulation.h" "${S}/include/whp/"
 }
 
+# stage_hvf_headers <sysroot>
+#
+# QEMU's HVF accelerator includes <Hypervisor/Hypervisor.h>. Hypervisor.framework
+# cannot be linked into a Cosmopolitan program (it is loaded at run time), so
+# compat/hvf provides just the types, constants and prototypes QEMU uses, with
+# every call going through a table filled in by cosmo_dlopen().
+stage_hvf_headers() {
+    local S=$1
+    mkdir -p "${S}/include/hvf"
+    cp -r "${PROJECT_ROOT}"/compat/hvf/. "${S}/include/hvf/"
+}
+
 build_deps() {
     local arch=$1 S=$2 B=$3
     local cc="${arch}-cosmo-cc" ar="${arch}-cosmo-ar" ranlib="${arch}-cosmo-ranlib"
@@ -419,6 +431,10 @@ EOF
         # WHPX only exists for x86_64 guests on x86_64 (Windows) hosts
         if [ "${arch}" = "x86_64" ] && [[ " ${SYSTEM_TARGETS} " == *" x86_64 "* ]]; then
             stage_whp_headers "${S}"
+        fi
+        # HVF only exists for aarch64 guests on aarch64 (Apple Silicon) hosts
+        if [ "${arch}" = "aarch64" ] && [[ " ${SYSTEM_TARGETS} " == *" aarch64 "* ]]; then
+            stage_hvf_headers "${S}"
         fi
     fi
 }
@@ -514,7 +530,14 @@ build_qemu() {
             whpx_flag="--enable-whpx"
             extra_cflags="${extra_cflags} -I${S}/include/whp"
         fi
-        system_flags=(--target-list="${targets%,}" ${kvm_flag} ${whpx_flag})
+        # HVF (Hypervisor.framework, loaded with cosmo_dlopen at run time on
+        # Apple Silicon) for aarch64 guests on the aarch64 host slice
+        local hvf_flag=""
+        if [ "${arch}" = "aarch64" ] && [[ " ${SYSTEM_TARGETS} " == *" aarch64 "* ]]; then
+            hvf_flag="--enable-hvf"
+            extra_cflags="${extra_cflags} -I${S}/include/hvf"
+        fi
+        system_flags=(--target-list="${targets%,}" ${kvm_flag} ${whpx_flag} ${hvf_flag})
     else
         system_flags=(--disable-system)
     fi

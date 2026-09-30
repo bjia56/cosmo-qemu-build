@@ -34,8 +34,9 @@ version, and applied in filename order.
 | `16-cosmo-mcosmo-name-collisions` | The build compiles QEMU with `-mcosmo` (`_COSMO_SOURCE`). Cosmopolitan's headers then `#define` `startswith` and `rdrand`, colliding with QEMU's static `startswith()` in `gdbstub.c` (renamed) and with the `rdrand` TCG helper (`#undef rdrand` in `translate.c` and `int_helper.c`, so the helper keeps one name in both). |
 | `17-cosmo-aarch64-cache-macos` | On an aarch64 host, QEMU reads `CTR_EL0` to size and flush the caches, which raises `SIGILL` on macOS (a crash before `main()`). Outside Linux, skip that read (line sizes fall back to `sysconf`/64) and flush through Cosmopolitan's `__clear_cache()`, which calls the macOS `sys_icache_invalidate`. |
 | `18-cosmo-macos-jit` | TCG on Apple Silicon needs the code buffer mapped with `MAP_JIT` and the per-thread write/execute toggle (`pthread_jit_write_protect_np`), both of which QEMU only does for `CONFIG_DARWIN`. Under Cosmopolitan, add `MAP_JIT` (zero on other systems) to the buffer and implement `qemu_thread_jit_write/execute` with Cosmopolitan's `__jit_begin()`/`__jit_end()` (no-ops elsewhere). Without it the buffer's `mprotect` fails with `EACCES`. |
+| `19-cosmo-enable-hvf` | HVF for aarch64 guests on the aarch64 host slice. `Hypervisor.framework` is loaded with `cosmo_dlopen` when the accelerator initializes (`accel/hvf/hvf-cosmo.c`), and every `hv_*` call (plus `mach_absolute_time` and `os_release` from libSystem) goes through a function table, so nothing links against the framework. The header QEMU includes is `compat/hvf/Hypervisor/Hypervisor.h`, a minimal interface written for this build; the meson gate accepts the `cosmopolitan` host OS on aarch64. Initialization fails cleanly off Apple Silicon, and an `HV_DENIED` result explains the missing `com.apple.security.hypervisor` entitlement. |
 
-Patches `04`-`18` are only needed for the system emulators; they are harmless
+Patches `04`-`19` are only needed for the system emulators; they are harmless
 for the `qemu-img` build.
 
 ### Building system emulators
