@@ -24,12 +24,10 @@ typedef int32_t hv_return_t;
 
 typedef uint64_t hv_ipa_t;
 typedef uint64_t hv_vcpu_t;
-typedef uint64_t hv_vcpu_options_t;
 typedef uint64_t hv_memory_flags_t;
 typedef struct hv_vm_config_s *hv_vm_config_t;
 typedef struct hv_vcpu_config_s *hv_vcpu_config_t;
 
-#define HV_VCPU_DEFAULT  (0ull)
 #define HV_MEMORY_READ   (1ull << 0)
 #define HV_MEMORY_WRITE  (1ull << 1)
 #define HV_MEMORY_EXEC   (1ull << 2)
@@ -38,7 +36,6 @@ typedef uint32_t hv_exit_reason_t;
 #define HV_EXIT_REASON_CANCELED         ((hv_exit_reason_t)0)
 #define HV_EXIT_REASON_EXCEPTION        ((hv_exit_reason_t)1)
 #define HV_EXIT_REASON_VTIMER_ACTIVATED ((hv_exit_reason_t)2)
-#define HV_EXIT_REASON_UNKNOWN          ((hv_exit_reason_t)3)
 
 typedef struct {
     uint64_t syndrome;
@@ -140,20 +137,13 @@ enum {
 
 enum {
     HV_FEATURE_REG_ID_AA64DFR0_EL1 = 0,
-    HV_FEATURE_REG_ID_AA64DFR1_EL1 = 1,
-    HV_FEATURE_REG_ID_AA64ISAR0_EL1 = 2,
-    HV_FEATURE_REG_ID_AA64ISAR1_EL1 = 3,
-    HV_FEATURE_REG_ID_AA64MMFR0_EL1 = 4,
-    HV_FEATURE_REG_ID_AA64MMFR1_EL1 = 5,
-    HV_FEATURE_REG_ID_AA64MMFR2_EL1 = 6,
-    HV_FEATURE_REG_ID_AA64PFR0_EL1 = 7,
-    HV_FEATURE_REG_ID_AA64PFR1_EL1 = 8,
-    HV_FEATURE_REG_CTR_EL0 = 9,
-    HV_FEATURE_REG_CLIDR_EL1 = 10,
-    HV_FEATURE_REG_DCZID_EL0 = 11,
 };
 
-/* System register encodings: op0<<14 | op1<<11 | CRn<<7 | CRm<<3 | op2 */
+/*
+ * System register identifiers are the Arm architectural encodings,
+ * op0<<14 | op1<<11 | CRn<<7 | CRm<<3 | op2, the same tuples QEMU's
+ * hvf_sreg_match table (target/arm/hvf/hvf.c) lists for these registers.
+ */
 enum {
     HV_SYS_REG_AFSR0_EL1 = 0xc288,
     HV_SYS_REG_AFSR1_EL1 = 0xc289,
