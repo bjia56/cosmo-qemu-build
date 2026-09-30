@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /*
  * Just enough of the Windows base types and macros for the Windows Hypervisor
  * Platform headers (WinHvPlatform.h, WinHvEmulation.h) to compile under

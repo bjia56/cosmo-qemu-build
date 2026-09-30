@@ -1,4 +1,5 @@
-#!/bin/bash
+# shellcheck shell=bash
+# SPDX-License-Identifier: MIT
 # Configuring and building QEMU for one host architecture.
 # Sourced by scripts/build.sh; relies on the variables it defines.
 
@@ -7,9 +8,6 @@ build_qemu() {
     local qb="${B}/qemu"
     mkdir -p "${qb}" && cd "${qb}"
 
-    # cosmocc's aarch64 GCC 14.1 crashes (ICE in emit_library_call_value_1)
-    # compiling qemu-io-cmds.c at -O2 unless inlining of non-inline functions
-    # is disabled.
     # Compile QEMU with -mcosmo (_COSMO_SOURCE), which exposes Cosmopolitan
     # extensions such as ShowCrashReports(); the two names it collides with are
     # patched in the QEMU sources. The compiler wrappers add the flag (see
@@ -17,6 +15,9 @@ build_qemu() {
     # ninja runs after a meson.build change sees it too.
     export COSMO_MCOSMO=1
     local extra_cflags="-I${S}/include"
+    # cosmocc's aarch64 GCC 14.1 crashes (ICE in emit_library_call_value_1)
+    # compiling qemu-io-cmds.c at -O2 unless inlining of non-inline functions
+    # is disabled.
     if [ "${arch}" = "aarch64" ]; then
         extra_cflags="${extra_cflags} -fno-inline-functions"
     fi
@@ -63,7 +64,7 @@ build_qemu() {
         --cross-prefix="${arch}-cosmo-" --cpu="${arch}" --host-cc=cc \
         --extra-cflags="${extra_cflags}" --extra-ldflags="-L${S}/lib" \
         "${system_flags[@]}" \
-        --disable-user --disable-docs --disable-guest-agent \
+        --disable-user --disable-docs --disable-guest-agent --disable-virtfs \
         --enable-tools --disable-werror \
         --disable-stack-protector --with-coroutine=ucontext \
         --disable-plugins --disable-png \

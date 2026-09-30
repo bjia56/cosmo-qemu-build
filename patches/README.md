@@ -48,6 +48,8 @@ copy of cosmocc's `ape-m1.c` (the source of that loader) so that the loader sign
 - If not, and the loader file on disk does not have the entitlement either (`codesign -d`), it copies itself,
   ad-hoc signs the copy with the entitlement using `codesign`, renames the copy over the loader (running
   instances keep their file) and starts again.
+- Its temporary files (the copy and the entitlements list) are created exclusively and never through a
+  symlink.
 - Signing is silent. If it fails, nothing is printed; QEMU reports that macOS denied access to
   Hypervisor.framework when HVF is requested.
 

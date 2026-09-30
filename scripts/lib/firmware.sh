@@ -1,4 +1,5 @@
-#!/bin/bash
+# shellcheck shell=bash
+# SPDX-License-Identifier: MIT
 # Selecting and staging the firmware embedded in the system emulators.
 # Sourced by scripts/build.sh; relies on the variables it defines.
 
@@ -51,7 +52,6 @@ with open(out, "w") as f:
     fi
 
     rm -rf "${dest}"
-    local src rel
     while IFS=$'\t' read -r src rel; do
         [ -f "${src}" ] || die "firmware file missing: ${src}"
         mkdir -p "${dest}/share/qemu/$(dirname "${rel}")"

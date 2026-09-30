@@ -1,4 +1,5 @@
-#!/bin/bash
+# shellcheck shell=bash
+# SPDX-License-Identifier: MIT
 # Linking the per-architecture ELF files into fat APE binaries.
 # Sourced by scripts/build.sh; relies on the variables it defines.
 
@@ -57,6 +58,7 @@ PYEOF
 # A copy of cosmocc's macOS arm64 loader source that signs itself (compat/ape),
 # which link_fat hands to apelink.
 prepare_loader_source() {
+    [[ " ${ARCHES} " == *" aarch64 "* ]] || return 0
     APE_M1_SOURCE="${BUILD_DIR}/ape-m1.c"
     cp "${COSMO_BIN}/ape-m1.c" "${APE_M1_SOURCE}"
     patch -s -p1 "${APE_M1_SOURCE}" < "${PROJECT_ROOT}/compat/ape/ape-m1-hypervisor.patch" \

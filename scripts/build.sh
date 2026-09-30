@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: MIT
 # Build script for qemu-img and the QEMU system emulators with Cosmopolitan libc
 #
 # This script builds QEMU separately for x86_64 and aarch64 hosts using the
@@ -27,9 +28,11 @@
 # None of those are provided by cosmocc, so they are built from source into a
 # per-architecture static sysroot first.
 #
-# Requirements:
-#   - cosmocc compiler toolchain (https://cosmo.zip/pub/cosmocc/)
-#   - git, curl, make, patch, zip, bzip2, ninja, python3, meson (>= 1.5), pkg-config
+# Requirements (a Linux build host with bash 4 or later):
+#   - cosmocc compiler toolchain (https://cosmo.zip/pub/cosmocc/), tested with
+#     4.0.2; the macOS loader patch (compat/ape) is written for that release
+#   - git, curl, tar, sed, make, patch, zip, bzip2, ninja, python3, sha256sum,
+#     meson (>= 1.5), pkg-config
 #   - qemu-aarch64-static, to run aarch64 configure-time probes
 #     (or set EXE_WRAPPER_aarch64 to another wrapper)
 #   - Linux kernel headers for each host architecture, for QEMU's KVM code:
@@ -48,8 +51,12 @@
 #   OUT_DIR              output location (default: ./out)
 #   EXE_WRAPPER_<arch>   command used to run <arch> test programs
 #   KERNEL_HEADERS_<arch> kernel header tree for <arch>
+#   QEMU_VERSION         QEMU tag to build; only versions with a directory in
+#                        patches/qemu/ are supported (default: v9.2.0)
 #   QEMU_REPO            QEMU git URL
 #   GLIB_REPO            glib git URL
+#   WHP_HEADERS_URL      where the Windows Hypervisor Platform headers are fetched
+#   (BUILD_DIR and OUT_DIR may be relative; they are made absolute)
 
 # The steps live in scripts/lib/: common (helpers), toolchain, headers, deps,
 # firmware, qemu, link and notices. This file holds the configuration and runs
@@ -61,6 +68,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="${BUILD_DIR:-${PROJECT_ROOT}/build}"
 OUT_DIR="${OUT_DIR:-${PROJECT_ROOT}/out}"
+# the build changes directories a lot, so work with absolute paths
+mkdir -p "${BUILD_DIR}" "${OUT_DIR}"
+BUILD_DIR="$(cd "${BUILD_DIR}" && pwd)"
+OUT_DIR="$(cd "${OUT_DIR}" && pwd)"
 DL_DIR="${BUILD_DIR}/dl"
 LOG_DIR="${BUILD_DIR}/logs"
 SRC_DIR="${BUILD_DIR}/source"
@@ -73,12 +84,16 @@ SYSTEM_TARGETS="${SYSTEM_TARGETS-x86_64 aarch64}"
 # The QEMU release to build: a tag from https://gitlab.com/qemu-project/qemu/-/tags
 # (patches/qemu/<tag> holds the changes for it)
 QEMU_VERSION="${QEMU_VERSION:-v9.2.0}"
+# Commits the tags resolve to (update together with the versions)
+QEMU_COMMIT="ae35f033b874c627d81d51070187fbf55f0bf1a7"
 QEMU_REPO="${QEMU_REPO:-https://gitlab.com/qemu-project/qemu.git}"
 
 # Dependencies, built into the sysroot. Tarballs are verified by SHA-256.
 GLIB_VERSION="2.82.4"
+GLIB_COMMIT="ca20e4ac71864f08e980dc044ac96c06d5482b37"
 GLIB_REPO="${GLIB_REPO:-https://github.com/GNOME/glib.git}"
 PROXY_LIBINTL_VERSION="0.4"
+PROXY_LIBINTL_COMMIT="c03e1a74b17fa7ec467e110130775409e4828a4c"
 PROXY_LIBINTL_REPO="https://github.com/frida/proxy-libintl.git"
 
 ZLIB_VERSION="1.3.1"
@@ -96,10 +111,15 @@ LIBFFI_SHA256="b0dea9df23c863a7a50e825440f3ebffabd65df1497108e5d437747843895a4e"
 # The first mirror hosts the upstream tarball as a Debian/Ubuntu "orig" file
 PIXMAN_VERSION="0.44.0"
 PIXMAN_URLS=(
-    "http://archive.ubuntu.com/ubuntu/pool/main/p/pixman/pixman_${PIXMAN_VERSION}.orig.tar.gz"
+    "https://archive.ubuntu.com/ubuntu/pool/main/p/pixman/pixman_${PIXMAN_VERSION}.orig.tar.gz"
     "https://cairographics.org/releases/pixman-${PIXMAN_VERSION}.tar.gz"
 )
 PIXMAN_SHA256="89a4c1e1e45e0b23dffe708202cb2eaffde0fe3727d7692b2e1739fec78a7dac"
+
+# Cosmopolitan Libc's license, for the notices (the libc is linked into every executable)
+COSMOPOLITAN_VERSION="4.0.2"
+COSMOPOLITAN_LICENSE_URL="https://raw.githubusercontent.com/jart/cosmopolitan/${COSMOPOLITAN_VERSION}/LICENSE"
+COSMOPOLITAN_LICENSE_SHA256="188101f17152d898b65719a4c4fc501aa71c16649cc37ebab534bcb3511c6127"
 
 # Windows Hypervisor Platform headers, MIT-licensed by Microsoft (see stage_whp_headers)
 WHP_HEADERS_COMMIT="aaa369489dc90c6483748af94c20897f12ae77dc"
@@ -111,7 +131,7 @@ declare -A WHP_HEADER_SHA256=(
 )
 
 for f in common toolchain headers deps firmware qemu link notices; do
-    # shellcheck disable=SC1090
+    # shellcheck source=/dev/null
     . "${SCRIPT_DIR}/lib/${f}.sh"
 done
 
@@ -129,13 +149,18 @@ echo ""
 # Tool checks
 # ---------------------------------------------------------------------------
 
-for tool in cosmocc apelink assimilate fixupobj git curl make patch zip bzip2 ninja python3 meson pkg-config sha256sum; do
+for tool in cosmocc apelink assimilate fixupobj git curl tar sed make patch zip bzip2 ninja python3 meson pkg-config sha256sum; do
     command -v "$tool" &>/dev/null || die "$tool not found in PATH
 For cosmocc see https://cosmo.zip/pub/cosmocc/ (or a jart/cosmopolitan GitHub release)"
 done
 for arch in $ARCHES; do
     command -v "${arch}-unknown-cosmo-cc" &>/dev/null || die "${arch}-unknown-cosmo-cc not found in PATH"
 done
+if [[ " ${ARCHES} " == *" aarch64 "* ]] && [ -z "${EXE_WRAPPER_aarch64:-}" ]; then
+    command -v qemu-aarch64-static &>/dev/null \
+        || die "qemu-aarch64-static not found in PATH (it runs the aarch64 configure-time probes;
+or set EXE_WRAPPER_aarch64 to another wrapper)"
+fi
 for guest in $SYSTEM_TARGETS; do
     case "$guest" in
         x86_64|aarch64) ;;
@@ -155,7 +180,8 @@ echo ""
 # Prepare directories, toolchain shims and sources
 # ---------------------------------------------------------------------------
 
-rm -rf "${SRC_DIR}" "${TOOLS_DIR}" "${BUILD_DIR}"/{x86_64,aarch64} "${LOG_DIR}"
+rm -rf "${SRC_DIR}" "${TOOLS_DIR}" "${LOG_DIR}"
+for arch in ${ARCHES}; do rm -rf "${BUILD_DIR:?}/${arch}"; done
 mkdir -p "${DL_DIR}" "${LOG_DIR}" "${SRC_DIR}" "${TOOLS_DIR}" "${OUT_DIR}"
 
 prepare_toolchain
@@ -165,14 +191,19 @@ download "${ZLIB_SHA256}" "zlib-${ZLIB_VERSION}.tar.gz" "${ZLIB_URLS[@]}"
 download "${PCRE2_SHA256}" "pcre2-${PCRE2_VERSION}.tar.bz2" "${PCRE2_URLS[@]}"
 download "${LIBFFI_SHA256}" "libffi-${LIBFFI_VERSION}.tar.gz" "${LIBFFI_URLS[@]}"
 download "${PIXMAN_SHA256}" "pixman-${PIXMAN_VERSION}.tar.gz" "${PIXMAN_URLS[@]}"
+download "${COSMOPOLITAN_LICENSE_SHA256}" "cosmopolitan-LICENSE" "${COSMOPOLITAN_LICENSE_URL}"
 tar -xf "${DL_DIR}/zlib-${ZLIB_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/pcre2-${PCRE2_VERSION}.tar.bz2" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/libffi-${LIBFFI_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/pixman-${PIXMAN_VERSION}.tar.gz" -C "${SRC_DIR}"
 
-clone_tag "${GLIB_REPO}" "${GLIB_VERSION}" "${SRC_DIR}/glib"
-clone_tag "${PROXY_LIBINTL_REPO}" "${PROXY_LIBINTL_VERSION}" "${SRC_DIR}/glib/subprojects/proxy-libintl"
-clone_tag "${QEMU_REPO}" "${QEMU_VERSION}" "${SRC_DIR}/qemu"
+# Fail early for a QEMU version that has no patches
+[ -d "${PROJECT_ROOT}/patches/qemu/${QEMU_VERSION}" ] \
+    || die "QEMU ${QEMU_VERSION} is not supported (available: $(ls "${PROJECT_ROOT}/patches/qemu" | tr '\n' ' '))"
+
+clone_tag "${GLIB_REPO}" "${GLIB_VERSION}" "${SRC_DIR}/glib" "${GLIB_COMMIT}"
+clone_tag "${PROXY_LIBINTL_REPO}" "${PROXY_LIBINTL_VERSION}" "${SRC_DIR}/glib/subprojects/proxy-libintl" "${PROXY_LIBINTL_COMMIT}"
+clone_tag "${QEMU_REPO}" "${QEMU_VERSION}" "${SRC_DIR}/qemu" "${QEMU_COMMIT}"
 
 apply_patches glib "${GLIB_VERSION}" "${SRC_DIR}/glib"
 apply_patches qemu "${QEMU_VERSION}" "${SRC_DIR}/qemu"
@@ -218,28 +249,10 @@ echo "================================================"
 prepare_loader_source
 
 # ---------------------------------------------------------------------------
-# Licenses: QEMU is GPL-2.0, the static dependencies carry their own terms.
-# They are stored inside every executable (Cosmopolitan serves the zip archive
-# appended to it), so nothing has to be distributed next to the binaries:
-#   unzip -p qemu-img.com COPYING
+# Licenses go into every executable (see lib/notices.sh)
 # ---------------------------------------------------------------------------
 
-LICENSE_DIR="${BUILD_DIR}/licenses"
-mkdir -p "${LICENSE_DIR}"
-cp "${SRC_DIR}/qemu/COPYING" "${LICENSE_DIR}/COPYING"
-write_notices "${LICENSE_DIR}/THIRD_PARTY_NOTICES.txt"
-
-# embed_licenses <binary>
-embed_licenses() {
-    (cd "${LICENSE_DIR}" && zip -q "$1" COPYING THIRD_PARTY_NOTICES.txt)
-    python3 - "$1" <<'PYEOF'
-import sys, zipfile
-names = zipfile.ZipFile(sys.argv[1]).namelist()
-for f in ("COPYING", "THIRD_PARTY_NOTICES.txt"):
-    if f not in names:
-        sys.exit("%s is missing from %s" % (f, sys.argv[1]))
-PYEOF
-}
+prepare_licenses
 
 link_fat qemu-img "${OUT_DIR}/qemu-img.com"
 embed_licenses "${OUT_DIR}/qemu-img.com"

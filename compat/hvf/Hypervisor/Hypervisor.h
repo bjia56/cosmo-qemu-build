@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /*
  * Minimal Hypervisor.framework (Apple Silicon) interface for building QEMU's
  * HVF accelerator under Cosmopolitan libc, where the framework cannot be

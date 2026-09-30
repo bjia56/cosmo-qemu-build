@@ -1,4 +1,5 @@
-#!/bin/bash
+# shellcheck shell=bash
+# SPDX-License-Identifier: MIT
 # Toolchain shims: native copies of cosmocc's binutils and compiler wrappers under
 # the names QEMU's configure and meson expect (<arch>-cosmo-<tool>).
 # Sourced by scripts/build.sh; relies on the variables it defines.

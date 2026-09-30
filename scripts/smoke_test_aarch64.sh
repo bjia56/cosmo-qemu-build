@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
 # Smoke tests for the aarch64 halves of the fat binaries on an x86_64 machine,
 # by converting a copy of each binary to a native aarch64 ELF and running it
 # under qemu-user (qemu-aarch64-static).

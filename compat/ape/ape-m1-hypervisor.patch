@@ -1,6 +1,6 @@
 --- a/ape-m1.c
 +++ b/ape-m1.c
-@@ -43,6 +43,178 @@
+@@ -43,6 +43,179 @@
  #include <time.h>
  #include <unistd.h>
  
@@ -64,13 +64,14 @@
 +  return 0;
 +}
 +
++/* the temporary files are created exclusively and never through a symlink, so a
++   shared TMPDIR cannot be used to overwrite other files */
 +static int QsWriteFile(const char *path, const void *data, size_t size) {
-+  FILE *f;
-+  int ok;
-+  if (!(f = fopen(path, "w")))
++  int fd, ok;
++  if ((fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600)) == -1)
 +    return -1;
-+  ok = fwrite(data, 1, size, f) == size;
-+  return (fclose(f) == 0 && ok) ? 0 : -1;
++  ok = write(fd, data, size) == (ssize_t)size;
++  return (close(fd) == 0 && ok) ? 0 : -1;
 +}
 +
 +static int QsCopyFile(const char *from, const char *to) {
@@ -79,7 +80,7 @@
 +  char buf[65536];
 +  if ((in = open(from, O_RDONLY)) == -1)
 +    return -1;
-+  if ((out = open(to, O_WRONLY | O_CREAT | O_TRUNC, 0755)) == -1) {
++  if ((out = open(to, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0700)) == -1) {
 +    close(in);
 +    return -1;
 +  }
@@ -179,7 +180,7 @@
  #define pagesz 16384
  /* maximum path size that cosmo can take */
  #define PATHSIZE       (PATH_MAX < 1024 ? PATH_MAX : 1024)
-@@ -943,6 +1115,8 @@
+@@ -943,6 +1116,8 @@
    union ElfEhdrBuf *ebuf;
    char *p, *pe, *exe, *prog, *execfn;
  

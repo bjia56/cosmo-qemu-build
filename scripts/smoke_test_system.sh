@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
 # Smoke test for a built qemu-system-* emulator.
 #
 # Usage:
@@ -39,7 +40,7 @@ run_guest() {
     pid=$!
     n=0
     while [ $n -lt "$TIMEOUT" ]; do
-        if grep -a -q "$expect" out.txt 2>/dev/null; then
+        if grep -a -q -E "$expect" out.txt 2>/dev/null; then
             kill $pid 2>/dev/null || true
             wait $pid 2>/dev/null || true
             return 0
@@ -129,7 +130,7 @@ aarch64)
     pass "bare-metal payload on virt (TCG)"
 
     # -bios resolves through QEMU's data directory, i.e. the embedded /zip
-    run_guest "UEFI\|EDK II\|Tianocore\|BdsDxe" -machine virt -cpu cortex-a57 -accel tcg \
+    run_guest "UEFI|EDK II|Tianocore|BdsDxe" -machine virt -cpu cortex-a57 -accel tcg \
         -bios edk2-aarch64-code.fd \
         || fail "edk2 firmware from embedded data directory"
     pass "edk2-aarch64 firmware from embedded data directory (TCG)"

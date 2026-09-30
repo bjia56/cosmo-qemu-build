@@ -1,4 +1,5 @@
-#!/bin/bash
+# shellcheck shell=bash
+# SPDX-License-Identifier: MIT
 # Helpers: logging, downloads, git clones, patches.
 # Sourced by scripts/build.sh; relies on the variables it defines.
 
@@ -34,17 +35,19 @@ download() {
     die "could not download ${name} with a matching checksum"
 }
 
-# clone_tag <repo> <tag> <dest>
+# clone_tag <repo> <tag> <dest> <commit>: the tag must resolve to the given commit
 clone_tag() {
     echo "  cloning $(basename "$1" .git) $2"
     GIT_LFS_SKIP_SMUDGE=1 git -c advice.detachedHead=false clone -q --depth 1 --branch "$2" "$1" "$3"
     [ -d "$3/.git" ] || die "clone of $1 failed"
+    [ "$(git -C "$3" rev-parse HEAD)" = "$4" ] \
+        || die "$(basename "$1" .git) $2 is not the expected commit ${4} (got $(git -C "$3" rev-parse HEAD))"
 }
 
 # apply_patches <component> <version> <source dir>
 apply_patches() {
     local dir="${PROJECT_ROOT}/patches/$1/$2"
-    [ -d "$dir" ] || return 0
+    [ -d "$dir" ] || die "no patches for $1 $2 (available: $(ls "${PROJECT_ROOT}/patches/$1" | tr '\n' ' '))"
     local p
     for p in "$dir"/*.patch; do
         [ -f "$p" ] || continue

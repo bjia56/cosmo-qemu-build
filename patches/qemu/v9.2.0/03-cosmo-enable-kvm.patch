@@ -7,8 +7,8 @@ index 4faf2f0..112b1ca 100644
  # CONFIG_MICROVM=n
  # CONFIG_NITRO_ENCLAVE=n
 +
-+# Xen HVM emulation on KVM needs the Linux eventfd API, which cosmopolitan
-+# does not provide.
++# Xen HVM emulation needs eventfd features (Xen event channels) that this
++# build does not wire up.
 +CONFIG_XEN_EMU=n
 diff --git a/configure b/configure
 index 98ce256..42d6f9d 100755

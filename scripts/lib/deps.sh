@@ -1,4 +1,5 @@
-#!/bin/bash
+# shellcheck shell=bash
+# SPDX-License-Identifier: MIT
 # Static dependencies (zlib, pcre2, libffi, glib, pixman) built into a per-architecture sysroot.
 # Sourced by scripts/build.sh; relies on the variables it defines.
 
@@ -18,7 +19,8 @@ build_deps() {
     local arch=$1 S=$2 B=$3
     local cc="${arch}-cosmo-cc" ar="${arch}-cosmo-ar" ranlib="${arch}-cosmo-ranlib"
     local host_triplet="${arch}-linux"
-    local wrapper; wrapper="$(exe_wrapper_for "$arch")"
+    local -a wrapper
+    read -ra wrapper <<< "$(exe_wrapper_for "$arch")"
     export CC="${cc}" AR="${ar}" RANLIB="${ranlib}"
 
     # zlib
@@ -37,7 +39,6 @@ build_deps() {
     # glib: only glib, gmodule and gthread are needed by QEMU. gio does not
     # compile against cosmocc, so build those targets and stage them by hand.
     local cross="${B}/cross.txt" glibb="${B}/glib"
-    local cpu_family=${arch}
     cat > "${cross}" <<EOF
 [binaries]
 c = '${arch}-cosmo-cc'
@@ -45,7 +46,7 @@ ar = '${arch}-cosmo-ar'
 ranlib = '${arch}-cosmo-ranlib'
 strip = '${arch}-cosmo-strip'
 pkg-config = 'pkg-config'
-exe_wrapper = [$(printf "'%s'," ${wrapper} | sed 's/,$//')]
+exe_wrapper = [$(printf "'%s'," "${wrapper[@]}" | sed 's/,$//')]
 
 [built-in options]
 pkg_config_path = '${S}/lib/pkgconfig'
@@ -54,7 +55,7 @@ c_link_args = ['-L${S}/lib']
 
 [host_machine]
 system = 'linux'
-cpu_family = '${cpu_family}'
+cpu_family = '${arch}'
 cpu = '${arch}'
 endian = 'little'
 

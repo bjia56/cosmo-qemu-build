@@ -1,4 +1,5 @@
-#!/bin/bash
+# shellcheck shell=bash
+# SPDX-License-Identifier: MIT
 # Staging of the header files QEMU needs and the sysroot does not have.
 # Sourced by scripts/build.sh; relies on the variables it defines.
 
@@ -65,7 +66,7 @@ stage_whp_headers() {
     done
     for f in "${!WHP_HEADER_SHA256[@]}"; do
         cp "${DL_DIR}/${f}" "${S}/include/whp/${f}"
-        cp "${DL_DIR}/${f}" "${S}/include/whp/$(echo "${f}" | tr 'A-Z' 'a-z')"
+        cp "${DL_DIR}/${f}" "${S}/include/whp/${f,,}"
     done
 }
 

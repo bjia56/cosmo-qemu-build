@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
 # Smoke test for a built qemu-img binary.
 #
 # Usage:
