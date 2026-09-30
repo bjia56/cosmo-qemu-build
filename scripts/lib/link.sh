@@ -18,14 +18,14 @@ link_fat() {
     private_loader "${output}"
 }
 
-# The loader that runs an APE on Apple Silicon is compiled on first use and
-# cached in ${TMPDIR:-$HOME} under a name shared by all APE programs. Ours is
-# modified to sign itself with the hypervisor entitlement (compat/ape), so it
-# gets its own cache name (versioned: bump it when the loader changes, a cached
-# loader of the same name is reused as is) and must not defer to a system-wide
-# "ape". This edits two lines of the shell script that apelink puts at the start
-# of the file, with replacements of the same length, so no offset in it changes;
-# the build fails if apelink's script is not exactly what is expected.
+# The executables use a loader of their own, so that the loader on Apple Silicon can
+# sign itself with the hypervisor entitlement (compat/ape). Two lines of the shell
+# script that apelink writes at the start of each file are edited, with
+# replacements of the same length so that no offset in the file changes: the
+# loader is stored as q.ape-01 in ${TMPDIR:-$HOME} instead of apelink's default
+# path, and a loader found in PATH is never used. The build fails if the script
+# is not exactly what is expected. Change the loader's number when the loader
+# changes: a stored loader is reused as is.
 private_loader() {
     python3 - "$1" <<'PYEOF'
 import sys
@@ -35,9 +35,10 @@ edits = (
     # the "exec ape" after it can never run
     (b'&& type ape >/dev/null 2>&1 && exec ape "$o" "$@"',
      b'&& false    >/dev/null 2>&1 && exec ape "$o" "$@"'),
-    # the cache name of the loader (change the number with the loader)
+    # where the loader is stored (change the number with the loader; the
+    # trailing space keeps the length)
     (b't="${TMPDIR:-${HOME:-.}}/.ape-1.10"',
-     b't="${TMPDIR:-${HOME:-.}}/.cqape-02"'),
+     b't="${TMPDIR:-${HOME:-.}}/q.ape-01" '),
 )
 with open(path, "r+b") as f:
     head = bytearray(f.read(262144))

@@ -38,16 +38,20 @@ regenerated build picks up host libraries.
 
 ## `compat/ape`
 
-`ape-m1-hypervisor.patch` is applied by `scripts/build.sh` to a copy of cosmocc's `ape-m1.c`, the
-source of the loader that runs an APE program on Apple Silicon (compiled on the first run and cached
-in `${TMPDIR:-$HOME}`). Hypervisor.framework only works for a process whose executable has the
-`com.apple.security.hypervisor` entitlement, and that process is the loader. The patched loader checks a
-`<loader>.signed` marker (the loader's inode, mtime and size), and when it is missing or stale it copies
-itself, ad-hoc signs the copy with the entitlement, renames the copy over the loader (so running
-instances keep their file) and re-executes. `COSMO_QEMU_NO_SELF_SIGN=1` disables it.
+Hypervisor.framework only works for a process whose executable has the `com.apple.security.hypervisor`
+entitlement. On Apple Silicon that process is the small loader a Cosmopolitan executable compiles on its
+first run and stores in `${TMPDIR:-$HOME}`. `ape-m1-hypervisor.patch` is applied by `scripts/build.sh` to a
+copy of cosmocc's `ape-m1.c` (the source of that loader) so that the loader signs itself, transparently:
 
-The build also gives the fat binaries their own loader cache name (`.cqape-02` instead of `.ape-1.10`; bump
-the number when the loader changes, because a cached loader with the same name is reused as is) and stops
-them from using a system-wide `ape`, with same-length replacements of two lines of the script header that
-`apelink` writes (the build fails if those lines are not exactly as expected), so no other APE program's
-loader can stand in for the signed one.
+- On startup it looks at a `<loader>.signed` marker holding the loader's inode, mtime and size.
+- If the marker is missing or does not match (first run, or the loader file changed), it copies itself,
+  ad-hoc signs the copy with the entitlement using `codesign`, renames the copy over the loader (running
+  instances keep their file), updates the marker and starts again.
+- If signing fails it does nothing visible and does not try again until the file changes; QEMU then reports
+  that macOS denied access to Hypervisor.framework when HVF is requested.
+
+The executables store this loader as `q.ape-01`, and a loader found in `PATH` is never used, so no other
+program's loader can stand in for the signed one. This is done by `scripts/build.sh` with same-length
+replacements in two lines of the shell script that `apelink` writes at the start of each file (the build
+fails if those lines are not exactly as expected). Change the loader's number when the loader changes,
+because a stored loader is reused as is.

@@ -23,11 +23,10 @@ The system emulators choose an accelerator at run time, and TCG (software emulat
 Use `-machine accel=kvm:tcg` (or `whpx:tcg`, `hvf:tcg`) to try an accelerator and fall back to TCG.
 
 **HVF and the loader.** Hypervisor.framework only works for a process signed with the
-`com.apple.security.hypervisor` entitlement, and on Apple Silicon that process is the small APE loader the
-executable compiles on its first run (this needs the Xcode command line tools, as for any APE program).
-These builds use their own loader (`${TMPDIR:-$HOME}/.cqape-02`), which signs itself with the entitlement
-the first time it runs and prints a notice. Set `COSMO_QEMU_NO_SELF_SIGN=1` to skip that. See
-[`patches/README.md`](patches/README.md).
+`com.apple.security.hypervisor` entitlement, and on Apple Silicon that process is the small loader the
+executable compiles on its first run (this needs the Xcode command line tools, as for any Cosmopolitan
+program). The executables use their own loader, `q.ape-01` in `${TMPDIR:-$HOME}`, which signs itself with the
+entitlement on first use, so HVF works without any setup. See [`patches/README.md`](patches/README.md).
 
 Not included: network block drivers (curl, ssh, nfs, rbd, gluster), encryption backed by
 gnutls/nettle/gcrypt, zstd and bzip2 compression, Linux-specific I/O (io_uring, linux-aio), 9p/virtfs,
