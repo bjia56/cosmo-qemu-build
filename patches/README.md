@@ -33,8 +33,9 @@ version, and applied in filename order.
 | `15-cosmo-whpx-ignore-invalid-msi` | With the in-kernel APIC, the guest's startup produces one all-zero MSI (fixed interrupt, vector 0). `WHvRequestInterrupt` fast-fails (`0xC0000409`) on it instead of returning an error, so `whpx_send_msi()` drops fixed interrupts below vector 16. Without this the default (in-kernel irqchip) WHPX configuration crashes on Windows. |
 | `16-cosmo-mcosmo-name-collisions` | The build compiles QEMU with `-mcosmo` (`_COSMO_SOURCE`). Cosmopolitan's headers then `#define` `startswith` and `rdrand`, colliding with QEMU's static `startswith()` in `gdbstub.c` (renamed) and with the `rdrand` TCG helper (`#undef rdrand` in `translate.c` and `int_helper.c`, so the helper keeps one name in both). |
 | `17-cosmo-aarch64-cache-macos` | On an aarch64 host, QEMU reads `CTR_EL0` to size and flush the caches, which raises `SIGILL` on macOS (a crash before `main()`). Outside Linux, skip that read (line sizes fall back to `sysconf`/64) and flush through Cosmopolitan's `__clear_cache()`, which calls the macOS `sys_icache_invalidate`. |
+| `18-cosmo-macos-jit` | TCG on Apple Silicon needs the code buffer mapped with `MAP_JIT` and the per-thread write/execute toggle (`pthread_jit_write_protect_np`), both of which QEMU only does for `CONFIG_DARWIN`. Under Cosmopolitan, add `MAP_JIT` (zero on other systems) to the buffer and implement `qemu_thread_jit_write/execute` with Cosmopolitan's `__jit_begin()`/`__jit_end()` (no-ops elsewhere). Without it the buffer's `mprotect` fails with `EACCES`. |
 
-Patches `04`-`17` are only needed for the system emulators; they are harmless
+Patches `04`-`18` are only needed for the system emulators; they are harmless
 for the `qemu-img` build.
 
 ### Building system emulators
