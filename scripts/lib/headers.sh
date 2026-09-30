@@ -47,7 +47,7 @@ stage_kernel_headers() {
 # publishes them under the MIT license (see the header of each file) in
 # https://github.com/MicrosoftDocs/Virtualization-Documentation; they are fetched
 # from a pinned commit and checked by SHA-256. They only need a few base Windows
-# types and macros, which the headers in compat/whp provide instead of a full
+# types and macros, which compat/whp/minwindef.h provides instead of a full
 # Windows SDK. They get their own directory, so no generic Windows header name is
 # visible to QEMU's or glib's configure probes. The files are named in mixed case
 # and include each other that way, while QEMU includes them in lower case.
@@ -59,6 +59,10 @@ stage_whp_headers() {
     done
     mkdir -p "${S}/include/whp"
     cp "${PROJECT_ROOT}"/compat/whp/*.h "${S}/include/whp/"
+    # the other Windows SDK headers they include; minwindef.h covers all of them
+    for f in apiset.h apisetcconv.h winapifamily.h; do
+        echo "/* intentionally empty: see minwindef.h */" > "${S}/include/whp/${f}"
+    done
     for f in "${!WHP_HEADER_SHA256[@]}"; do
         cp "${DL_DIR}/${f}" "${S}/include/whp/${f}"
         cp "${DL_DIR}/${f}" "${S}/include/whp/$(echo "${f}" | tr 'A-Z' 'a-z')"
