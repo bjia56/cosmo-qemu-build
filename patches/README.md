@@ -48,3 +48,17 @@ host architecture in the sysroot, because QEMU's vendored `linux/kvm.h` includes
 own `kvm.h` there; QEMU's vendored copy must win. Any `ninja` run after a `meson.build`
 change must keep `PKG_CONFIG_PATH`/`PKG_CONFIG_LIBDIR` pointing at the sysroot, or the
 regenerated build picks up host libraries.
+
+## `compat/ape`
+
+`ape-m1-hypervisor.patch` is applied by `scripts/build.sh` to a copy of cosmocc's `ape-m1.c`, the
+source of the loader that runs an APE program on Apple Silicon (compiled on the first run and cached
+in `${TMPDIR:-$HOME}`). Hypervisor.framework only works for a process whose executable has the
+`com.apple.security.hypervisor` entitlement, and that process is the loader. The patched loader checks a
+`<loader>.signed` marker (the loader's inode, mtime and size), and when it is missing or stale it copies
+itself, ad-hoc signs the copy with the entitlement, renames the copy over the loader (so running
+instances keep their file) and re-executes. `COSMO_QEMU_NO_SELF_SIGN=1` disables it.
+
+The build also gives the fat binaries their own loader cache name (`.qemu-ape` instead of `.ape-1.10`) and
+stops them from using a system-wide `ape`, with same-length replacements in the script header, so no
+other APE program's loader can stand in for the signed one.

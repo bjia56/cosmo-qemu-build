@@ -1,0 +1,151 @@
+--- a/ape-m1.c
++++ b/ape-m1.c
+@@ -43,6 +43,139 @@
+ #include <time.h>
+ #include <unistd.h>
+ 
++/*
++ * cosmo-qemu: give this loader the hypervisor entitlement.
++ *
++ * Hypervisor.framework only works for a process whose executable carries the
++ * com.apple.security.hypervisor entitlement, and the process a Cosmopolitan
++ * program runs in is this loader. The loader is private to cosmo-qemu (its file
++ * name is set when the executable is built), so it is fine to sign it: on the
++ * first run, and whenever the file has changed since it was last signed, copy
++ * it, ad-hoc sign the copy with the entitlement, rename the copy over the
++ * loader (running instances keep their old file) and start again. Set
++ * COSMO_QEMU_NO_SELF_SIGN to skip all of this.
++ */
++#include <mach-o/dyld.h>
++#include <spawn.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <sys/stat.h>
++#include <sys/wait.h>
++
++extern char **environ;
++
++static const char QsPlist[] =
++    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
++    "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
++    "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
++    "<plist version=\"1.0\">\n"
++    "<dict>\n"
++    "  <key>com.apple.security.hypervisor</key>\n"
++    "  <true/>\n"
++    "</dict>\n"
++    "</plist>\n";
++
++static int QsStamp(const char *path, char *buf, size_t n) {
++  struct stat st;
++  if (stat(path, &st))
++    return -1;
++  snprintf(buf, n, "%llu %lld %ld %lld\n", (unsigned long long)st.st_ino,
++           (long long)st.st_mtimespec.tv_sec, (long)st.st_mtimespec.tv_nsec,
++           (long long)st.st_size);
++  return 0;
++}
++
++static int QsWriteFile(const char *path, const void *data, size_t size) {
++  FILE *f;
++  int ok;
++  if (!(f = fopen(path, "w")))
++    return -1;
++  ok = fwrite(data, 1, size, f) == size;
++  return (fclose(f) == 0 && ok) ? 0 : -1;
++}
++
++static int QsCopyFile(const char *from, const char *to) {
++  int in, out, ok = 0;
++  ssize_t n;
++  char buf[65536];
++  if ((in = open(from, O_RDONLY)) == -1)
++    return -1;
++  if ((out = open(to, O_WRONLY | O_CREAT | O_TRUNC, 0755)) == -1) {
++    close(in);
++    return -1;
++  }
++  while ((n = read(in, buf, sizeof(buf))) > 0) {
++    if (write(out, buf, n) != n) {
++      n = -1;
++      break;
++    }
++  }
++  ok = n == 0;
++  close(in);
++  if (close(out))
++    ok = 0;
++  return ok ? fchmodat(AT_FDCWD, to, 0755, 0) : -1;
++}
++
++static int QsRun(char *const argv[]) {
++  pid_t pid;
++  int status;
++  if (posix_spawn(&pid, argv[0], 0, 0, argv, environ))
++    return -1;
++  if (waitpid(pid, &status, 0) == -1)
++    return -1;
++  return WIFEXITED(status) && WEXITSTATUS(status) == 0 ? 0 : -1;
++}
++
++static void QsEnsureEntitlement(char **argv) {
++  uint32_t size;
++  FILE *f;
++  size_t n;
++  char path[PATH_MAX], self[PATH_MAX], marker[PATH_MAX + 16];
++  char tmp[PATH_MAX + 32], plist[PATH_MAX + 32];
++  char want[160], have[160];
++  if (getenv("COSMO_QEMU_NO_SELF_SIGN"))
++    return;
++  size = sizeof(path);
++  if (_NSGetExecutablePath(path, &size) || !realpath(path, self))
++    return;
++  snprintf(marker, sizeof(marker), "%s.signed", self);
++  if (QsStamp(self, want, sizeof(want)))
++    return;
++  if ((f = fopen(marker, "r"))) {
++    n = fread(have, 1, sizeof(have) - 1, f);
++    fclose(f);
++    have[n] = 0;
++    if (!strcmp(have, want))
++      return; /* signed, or already tried, for this very file */
++  }
++  dprintf(2, "cosmo-qemu: signing the loader with the hypervisor entitlement "
++             "(one time; COSMO_QEMU_NO_SELF_SIGN=1 skips this)\n");
++  snprintf(tmp, sizeof(tmp), "%s.tmp.%d", self, (int)getpid());
++  snprintf(plist, sizeof(plist), "%s.plist.%d", self, (int)getpid());
++  char *const cmd[] = {"/usr/bin/codesign", "--force", "-s", "-",
++                       "--entitlements",    plist,     tmp,  0};
++  if (QsWriteFile(plist, QsPlist, sizeof(QsPlist) - 1) || QsCopyFile(self, tmp) ||
++      QsRun(cmd)) {
++    dprintf(2, "cosmo-qemu: could not sign the loader; HVF will not work\n");
++    unlink(plist);
++    unlink(tmp);
++    /* do not try again until the loader file changes */
++    QsWriteFile(marker, want, strlen(want));
++    return;
++  }
++  unlink(plist);
++  if (rename(tmp, self)) {
++    unlink(tmp);
++    QsWriteFile(marker, want, strlen(want));
++    return;
++  }
++  if (QsStamp(self, want, sizeof(want)) ||
++      QsWriteFile(marker, want, strlen(want)))
++    return; /* cannot remember it, so do not start over */
++  execv(self, argv);
++}
++
+ #define pagesz 16384
+ /* maximum path size that cosmo can take */
+ #define PATHSIZE       (PATH_MAX < 1024 ? PATH_MAX : 1024)
+@@ -943,6 +1076,8 @@
+   union ElfEhdrBuf *ebuf;
+   char *p, *pe, *exe, *prog, *execfn;
+ 
++  QsEnsureEntitlement(argv);
++
+   /* allocate loader memory in program's arg block */
+   n = sizeof(struct ApeLoader);
+   M = (struct ApeLoader *)__builtin_alloca(n);
