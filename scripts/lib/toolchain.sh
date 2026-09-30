@@ -37,8 +37,9 @@ fi
 exec "${COSMO_BIN}/${arch}-unknown-cosmo-cc" "\${args[@]}"
 WRAPPER
         done
-        ln -s "$(command -v pkg-config)" "${TOOLS_DIR}/${arch}-cosmo-pkg-config"
+        # chmod follows symlinks and would fail on the system pkg-config, so link it after
         chmod +x "${TOOLS_DIR}"/${arch}-cosmo-*
+        ln -sf "$(command -v pkg-config)" "${TOOLS_DIR}/${arch}-cosmo-pkg-config"
     done
     export PATH="${TOOLS_DIR}:${PATH}"
 }
