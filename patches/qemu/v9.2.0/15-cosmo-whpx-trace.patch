@@ -1,21 +1,38 @@
 diff --git a/target/i386/whpx/whpx-all.c b/target/i386/whpx/whpx-all.c
-index 8153d28..3c370fe 100644
+index 8153d28..583b3e0 100644
 --- a/target/i386/whpx/whpx-all.c
 +++ b/target/i386/whpx/whpx-all.c
-@@ -276,6 +276,20 @@ static void *cosmo_get_proc(HMODULE lib, const char *name)
+@@ -276,6 +276,37 @@ static void *cosmo_get_proc(HMODULE lib, const char *name)
  #define FreeLibrary(lib) cosmo_dlclose(lib)
  #endif
  
 +#ifdef __COSMOPOLITAN__
 +void whpx_trace_name(const char *name)
 +{
-+    static int enabled = -1;
++    static const char *target;
++    static bool initialized;
 +
-+    if (enabled < 0) {
-+        enabled = getenv("QEMU_WHPX_TRACE") != NULL;
++    if (!initialized) {
++        target = getenv("QEMU_WHPX_TRACE");
++        initialized = true;
 +    }
-+    if (enabled) {
++    if (!target || !*target) {
++        return;
++    }
++    if (!strcmp(target, "1")) {
 +        fprintf(stderr, "whpx: %s\n", name);
++    } else {
++        /*
++         * Any other value is a file name. Reopen it in append mode for every
++         * line: stdout/stderr redirected to a file can be overwritten by the
++         * crash report, and this way nothing is buffered when a crash happens.
++         */
++        FILE *f = fopen(target, "a");
++
++        if (f) {
++            fprintf(f, "whpx: %s\n", name);
++            fclose(f);
++        }
 +    }
 +}
 +#endif
@@ -23,7 +40,7 @@ index 8153d28..3c370fe 100644
  static bool whp_dispatch_initialized;
  static HMODULE hWinHvPlatform, hWinHvEmulation;
  static uint32_t max_vcpu_index;
-@@ -344,7 +358,7 @@ static void whpx_set_xcrs(CPUState *cpu)
+@@ -344,7 +375,7 @@ static void whpx_set_xcrs(CPUState *cpu)
  
      /* Only xcr0 is supported by the hypervisor currently */
      xcr0.Reg64 = cpu_env(cpu)->xcr0;
@@ -32,7 +49,7 @@ index 8153d28..3c370fe 100644
          whpx->partition, cpu->cpu_index, &xcr0_name, 1, &xcr0);
      if (FAILED(hr)) {
          error_report("WHPX: Failed to set register xcr0, hr=%08x", hr);
-@@ -370,14 +384,14 @@ static int whpx_set_tsc(CPUState *cpu)
+@@ -370,14 +401,14 @@ static int whpx_set_tsc(CPUState *cpu)
           * error. It just increases the likelihood of TSC variance between
           * vCPUs and some guest OS are able to handle that just fine.
           */
@@ -49,7 +66,7 @@ index 8153d28..3c370fe 100644
          whpx->partition, cpu->cpu_index, &tsc_reg, 1, &tsc_val);
      if (FAILED(hr)) {
          error_report("WHPX: Failed to set TSC, hr=%08x", hr);
-@@ -571,7 +585,7 @@ static void whpx_set_registers(CPUState *cpu, int level)
+@@ -571,7 +602,7 @@ static void whpx_set_registers(CPUState *cpu, int level)
  
      assert(idx == RTL_NUMBER_OF(whpx_register_names));
  
@@ -58,7 +75,7 @@ index 8153d28..3c370fe 100644
          whpx->partition, cpu->cpu_index,
          whpx_register_names,
          RTL_NUMBER_OF(whpx_register_names),
-@@ -592,7 +606,7 @@ static int whpx_get_tsc(CPUState *cpu)
+@@ -592,7 +623,7 @@ static int whpx_get_tsc(CPUState *cpu)
      HRESULT hr;
      struct whpx_state *whpx = &whpx_global;
  
@@ -67,7 +84,7 @@ index 8153d28..3c370fe 100644
          whpx->partition, cpu->cpu_index, &tsc_reg, 1, &tsc_val);
      if (FAILED(hr)) {
          error_report("WHPX: Failed to get TSC, hr=%08x", hr);
-@@ -616,7 +630,7 @@ static void whpx_get_xcrs(CPUState *cpu)
+@@ -616,7 +647,7 @@ static void whpx_get_xcrs(CPUState *cpu)
      }
  
      /* Only xcr0 is supported by the hypervisor currently */
@@ -76,7 +93,7 @@ index 8153d28..3c370fe 100644
          whpx->partition, cpu->cpu_index, &xcr0_name, 1, &xcr0);
      if (FAILED(hr)) {
          error_report("WHPX: Failed to get register xcr0, hr=%08x", hr);
-@@ -646,7 +660,7 @@ static void whpx_get_registers(CPUState *cpu)
+@@ -646,7 +677,7 @@ static void whpx_get_registers(CPUState *cpu)
          env->tsc_valid = !runstate_is_running();
      }
  
@@ -85,7 +102,7 @@ index 8153d28..3c370fe 100644
          whpx->partition, cpu->cpu_index,
          whpx_register_names,
          RTL_NUMBER_OF(whpx_register_names),
-@@ -811,6 +825,7 @@ static HRESULT CALLBACK whpx_emu_ioport_callback(
+@@ -811,6 +842,7 @@ static HRESULT CALLBACK whpx_emu_ioport_callback(
      void *ctx,
      WHV_EMULATOR_IO_ACCESS_INFO *IoAccess)
  {
@@ -93,7 +110,7 @@ index 8153d28..3c370fe 100644
      MemTxAttrs attrs = { 0 };
      address_space_rw(&address_space_io, IoAccess->Port, attrs,
                       &IoAccess->Data, IoAccess->AccessSize,
-@@ -822,6 +837,7 @@ static HRESULT CALLBACK whpx_emu_mmio_callback(
+@@ -822,6 +854,7 @@ static HRESULT CALLBACK whpx_emu_mmio_callback(
      void *ctx,
      WHV_EMULATOR_MEMORY_ACCESS_INFO *ma)
  {
@@ -101,7 +118,7 @@ index 8153d28..3c370fe 100644
      cpu_physical_memory_rw(ma->GpaAddress, ma->Data, ma->AccessSize,
                             ma->Direction);
      return S_OK;
-@@ -833,11 +849,12 @@ static HRESULT CALLBACK whpx_emu_getreg_callback(
+@@ -833,11 +866,12 @@ static HRESULT CALLBACK whpx_emu_getreg_callback(
      UINT32 RegisterCount,
      WHV_REGISTER_VALUE *RegisterValues)
  {
@@ -115,7 +132,7 @@ index 8153d28..3c370fe 100644
          whpx->partition, cpu->cpu_index,
          RegisterNames, RegisterCount,
          RegisterValues);
-@@ -855,11 +872,12 @@ static HRESULT CALLBACK whpx_emu_setreg_callback(
+@@ -855,11 +889,12 @@ static HRESULT CALLBACK whpx_emu_setreg_callback(
      UINT32 RegisterCount,
      const WHV_REGISTER_VALUE *RegisterValues)
  {
@@ -129,7 +146,7 @@ index 8153d28..3c370fe 100644
          whpx->partition, cpu->cpu_index,
          RegisterNames, RegisterCount,
          RegisterValues);
-@@ -884,12 +902,13 @@ static HRESULT CALLBACK whpx_emu_translate_callback(
+@@ -884,12 +919,13 @@ static HRESULT CALLBACK whpx_emu_translate_callback(
      WHV_TRANSLATE_GVA_RESULT_CODE *TranslationResult,
      WHV_GUEST_PHYSICAL_ADDRESS *Gpa)
  {
@@ -144,7 +161,7 @@ index 8153d28..3c370fe 100644
                                        Gva, TranslateFlags, &res, Gpa);
      if (FAILED(hr)) {
          error_report("WHPX: Failed to translate GVA, hr=%08x", hr);
-@@ -915,7 +934,7 @@ static int whpx_handle_mmio(CPUState *cpu, WHV_MEMORY_ACCESS_CONTEXT *ctx)
+@@ -915,7 +951,7 @@ static int whpx_handle_mmio(CPUState *cpu, WHV_MEMORY_ACCESS_CONTEXT *ctx)
      AccelCPUState *vcpu = cpu->accel;
      WHV_EMULATOR_STATUS emu_status;
  
@@ -153,7 +170,7 @@ index 8153d28..3c370fe 100644
          vcpu->emulator, cpu,
          &vcpu->exit_ctx.VpContext, ctx,
          &emu_status);
-@@ -940,7 +959,7 @@ static int whpx_handle_portio(CPUState *cpu,
+@@ -940,7 +976,7 @@ static int whpx_handle_portio(CPUState *cpu,
      AccelCPUState *vcpu = cpu->accel;
      WHV_EMULATOR_STATUS emu_status;
  
@@ -162,7 +179,7 @@ index 8153d28..3c370fe 100644
          vcpu->emulator, cpu,
          &vcpu->exit_ctx.VpContext, ctx,
          &emu_status);
-@@ -977,7 +996,7 @@ static HRESULT whpx_set_exception_exit_bitmap(UINT64 exceptions)
+@@ -977,7 +1013,7 @@ static HRESULT whpx_set_exception_exit_bitmap(UINT64 exceptions)
  
      prop.ExceptionExitBitmap = exceptions;
  
@@ -171,7 +188,7 @@ index 8153d28..3c370fe 100644
          whpx->partition,
          WHvPartitionPropertyCodeExceptionExitBitmap,
          &prop,
-@@ -1010,7 +1029,7 @@ static HRESULT whpx_vcpu_configure_single_stepping(CPUState *cpu,
+@@ -1010,7 +1046,7 @@ static HRESULT whpx_vcpu_configure_single_stepping(CPUState *cpu,
       * TF bit in rflags. Otherwise, clear it.
       */
      reg_name = WHvX64RegisterRflags;
@@ -180,7 +197,7 @@ index 8153d28..3c370fe 100644
          whpx->partition,
          cpu->cpu_index,
          &reg_name,
-@@ -1037,7 +1056,7 @@ static HRESULT whpx_vcpu_configure_single_stepping(CPUState *cpu,
+@@ -1037,7 +1073,7 @@ static HRESULT whpx_vcpu_configure_single_stepping(CPUState *cpu,
          *exit_context_rflags = reg_value.Reg64;
      }
  
@@ -189,7 +206,7 @@ index 8153d28..3c370fe 100644
          whpx->partition,
          cpu->cpu_index,
          &reg_name,
-@@ -1057,7 +1076,7 @@ static HRESULT whpx_vcpu_configure_single_stepping(CPUState *cpu,
+@@ -1057,7 +1093,7 @@ static HRESULT whpx_vcpu_configure_single_stepping(CPUState *cpu,
      /* Suspend delivery of hardware interrupts during single-stepping. */
      reg_value.InterruptState.InterruptShadow = set != 0;
  
@@ -198,7 +215,7 @@ index 8153d28..3c370fe 100644
      whpx->partition,
          cpu->cpu_index,
          &reg_name,
-@@ -1080,7 +1099,7 @@ static HRESULT whpx_vcpu_configure_single_stepping(CPUState *cpu,
+@@ -1080,7 +1116,7 @@ static HRESULT whpx_vcpu_configure_single_stepping(CPUState *cpu,
           */
  
          reg_name = WHvX64RegisterPendingDebugException;
@@ -207,7 +224,7 @@ index 8153d28..3c370fe 100644
          whpx->partition,
              cpu->cpu_index,
              &reg_name,
-@@ -1096,7 +1115,7 @@ static HRESULT whpx_vcpu_configure_single_stepping(CPUState *cpu,
+@@ -1096,7 +1132,7 @@ static HRESULT whpx_vcpu_configure_single_stepping(CPUState *cpu,
          if (reg_value.PendingDebugException.SingleStep) {
              reg_value.PendingDebugException.SingleStep = 0;
  
@@ -216,7 +233,7 @@ index 8153d28..3c370fe 100644
                  whpx->partition,
                  cpu->cpu_index,
                  &reg_name,
-@@ -1449,7 +1468,7 @@ static vaddr whpx_vcpu_get_pc(CPUState *cpu, bool exit_context_valid)
+@@ -1449,7 +1485,7 @@ static vaddr whpx_vcpu_get_pc(CPUState *cpu, bool exit_context_valid)
          HRESULT hr;
          struct whpx_state *whpx = &whpx_global;
  
@@ -225,7 +242,7 @@ index 8153d28..3c370fe 100644
              whpx->partition,
              cpu->cpu_index,
              &reg_name,
-@@ -1594,7 +1613,7 @@ static void whpx_vcpu_pre_run(CPUState *cpu)
+@@ -1594,7 +1630,7 @@ static void whpx_vcpu_pre_run(CPUState *cpu)
      vcpu->ready_for_pic_interrupt = false;
  
      if (reg_count) {
@@ -234,7 +251,7 @@ index 8153d28..3c370fe 100644
              whpx->partition, cpu->cpu_index,
              reg_names, reg_count, reg_values);
          if (FAILED(hr)) {
-@@ -1763,7 +1782,7 @@ static int whpx_vcpu_run(CPUState *cpu)
+@@ -1763,7 +1799,7 @@ static int whpx_vcpu_run(CPUState *cpu)
              whpx_vcpu_configure_single_stepping(cpu, true, NULL);
          }
  
@@ -243,7 +260,7 @@ index 8153d28..3c370fe 100644
              whpx->partition, cpu->cpu_index,
              &vcpu->exit_ctx, sizeof(vcpu->exit_ctx));
  
-@@ -1850,7 +1869,7 @@ static int whpx_vcpu_run(CPUState *cpu)
+@@ -1850,7 +1886,7 @@ static int whpx_vcpu_run(CPUState *cpu)
              /* no shorthand. Bits 56-63 contain the destination. */
              case 0:
                  ipi.Destination = (icr >> 56) & APIC_VECTOR_MASK;
@@ -252,7 +269,7 @@ index 8153d28..3c370fe 100644
                          &ipi, sizeof(ipi));
                  if (FAILED(hr)) {
                      error_report("WHPX: Failed to request interrupt  hr=%08x",
-@@ -1892,7 +1911,7 @@ static int whpx_vcpu_run(CPUState *cpu)
+@@ -1892,7 +1928,7 @@ static int whpx_vcpu_run(CPUState *cpu)
                   * guest to modify the APIC ID.
                   */
                  ipi.Destination = i;
@@ -261,7 +278,7 @@ index 8153d28..3c370fe 100644
                          &ipi, sizeof(ipi));
                  if (FAILED(hr)) {
                      error_report(
-@@ -1939,7 +1958,7 @@ static int whpx_vcpu_run(CPUState *cpu)
+@@ -1939,7 +1975,7 @@ static int whpx_vcpu_run(CPUState *cpu)
              reg_count = vcpu->exit_ctx.MsrAccess.AccessInfo.IsWrite ?
                          1 : 3;
  
@@ -270,7 +287,7 @@ index 8153d28..3c370fe 100644
                  whpx->partition,
                  cpu->cpu_index,
                  reg_names, reg_count,
-@@ -2008,7 +2027,7 @@ static int whpx_vcpu_run(CPUState *cpu)
+@@ -2008,7 +2044,7 @@ static int whpx_vcpu_run(CPUState *cpu)
              reg_values[3].Reg64 = rdx;
              reg_values[4].Reg64 = rbx;
  
@@ -279,7 +296,7 @@ index 8153d28..3c370fe 100644
                  whpx->partition, cpu->cpu_index,
                  reg_names,
                  reg_count,
-@@ -2196,7 +2215,7 @@ int whpx_init_vcpu(CPUState *cpu)
+@@ -2196,7 +2232,7 @@ int whpx_init_vcpu(CPUState *cpu)
  
      vcpu = g_new0(AccelCPUState, 1);
  
@@ -288,7 +305,7 @@ index 8153d28..3c370fe 100644
          &whpx_emu_callbacks,
          &vcpu->emulator);
      if (FAILED(hr)) {
-@@ -2206,12 +2225,12 @@ int whpx_init_vcpu(CPUState *cpu)
+@@ -2206,12 +2242,12 @@ int whpx_init_vcpu(CPUState *cpu)
          goto error;
      }
  
@@ -303,7 +320,7 @@ index 8153d28..3c370fe 100644
          ret = -EINVAL;
          goto error;
      }
-@@ -2223,7 +2242,7 @@ int whpx_init_vcpu(CPUState *cpu)
+@@ -2223,7 +2259,7 @@ int whpx_init_vcpu(CPUState *cpu)
       * frequency can be migrated later via this field.
       */
      if (!env->tsc_khz) {
@@ -312,7 +329,7 @@ index 8153d28..3c370fe 100644
              WHvCapabilityCodeProcessorClockFrequency, &freq, sizeof(freq),
                  NULL);
          if (hr != WHV_E_UNKNOWN_CAPABILITY) {
-@@ -2236,7 +2255,7 @@ int whpx_init_vcpu(CPUState *cpu)
+@@ -2236,7 +2272,7 @@ int whpx_init_vcpu(CPUState *cpu)
      }
  
      env->apic_bus_freq = HYPERV_APIC_BUS_FREQUENCY;
@@ -321,7 +338,7 @@ index 8153d28..3c370fe 100644
          WHvCapabilityCodeInterruptClockFrequency, &freq, sizeof(freq), NULL);
      if (hr != WHV_E_UNKNOWN_CAPABILITY) {
          if (FAILED(hr)) {
-@@ -2253,7 +2272,7 @@ int whpx_init_vcpu(CPUState *cpu)
+@@ -2253,7 +2289,7 @@ int whpx_init_vcpu(CPUState *cpu)
      if (x86_cpu->vmware_cpuid_freq && env->tsc_khz) {
          UINT32 cpuidExitList[] = {1, 0x80000001, 0x40000000, 0x40000010};
  
@@ -330,7 +347,7 @@ index 8153d28..3c370fe 100644
                  whpx->partition,
                  WHvPartitionPropertyCodeCpuidExitList,
                  cpuidExitList,
-@@ -2309,8 +2328,8 @@ void whpx_destroy_vcpu(CPUState *cpu)
+@@ -2309,8 +2345,8 @@ void whpx_destroy_vcpu(CPUState *cpu)
      struct whpx_state *whpx = &whpx_global;
      AccelCPUState *vcpu = cpu->accel;
  
@@ -341,7 +358,7 @@ index 8153d28..3c370fe 100644
      g_free(cpu->accel);
      return;
  }
-@@ -2318,7 +2337,7 @@ void whpx_destroy_vcpu(CPUState *cpu)
+@@ -2318,7 +2354,7 @@ void whpx_destroy_vcpu(CPUState *cpu)
  void whpx_vcpu_kick(CPUState *cpu)
  {
      struct whpx_state *whpx = &whpx_global;
@@ -350,7 +367,7 @@ index 8153d28..3c370fe 100644
          whpx->partition, cpu->cpu_index, 0);
  }
  
-@@ -2345,7 +2364,7 @@ static void whpx_update_mapping(hwaddr start_pa, ram_addr_t size,
+@@ -2345,7 +2381,7 @@ static void whpx_update_mapping(hwaddr start_pa, ram_addr_t size,
      */
  
      if (add) {
@@ -359,7 +376,7 @@ index 8153d28..3c370fe 100644
                                           host_va,
                                           start_pa,
                                           size,
-@@ -2353,7 +2372,7 @@ static void whpx_update_mapping(hwaddr start_pa, ram_addr_t size,
+@@ -2353,7 +2389,7 @@ static void whpx_update_mapping(hwaddr start_pa, ram_addr_t size,
                                            WHvMapGpaRangeFlagExecute |
                                            (rom ? 0 : WHvMapGpaRangeFlagWrite)));
      } else {
@@ -368,7 +385,7 @@ index 8153d28..3c370fe 100644
                                             start_pa,
                                             size);
      }
-@@ -2568,7 +2587,7 @@ static int whpx_accel_init(MachineState *ms)
+@@ -2568,7 +2604,7 @@ static int whpx_accel_init(MachineState *ms)
  
      whpx->mem_quota = ms->ram_size;
  
@@ -377,7 +394,7 @@ index 8153d28..3c370fe 100644
          WHvCapabilityCodeHypervisorPresent, &whpx_cap,
          sizeof(whpx_cap), &whpx_cap_size);
      if (FAILED(hr) || !whpx_cap.HypervisorPresent) {
-@@ -2577,7 +2596,7 @@ static int whpx_accel_init(MachineState *ms)
+@@ -2577,7 +2613,7 @@ static int whpx_accel_init(MachineState *ms)
          goto error;
      }
  
@@ -386,7 +403,7 @@ index 8153d28..3c370fe 100644
          WHvCapabilityCodeFeatures, &features, sizeof(features), NULL);
      if (FAILED(hr)) {
          error_report("WHPX: Failed to query capabilities, hr=%08x", hr);
-@@ -2585,7 +2604,7 @@ static int whpx_accel_init(MachineState *ms)
+@@ -2585,7 +2621,7 @@ static int whpx_accel_init(MachineState *ms)
          goto error;
      }
  
@@ -395,7 +412,7 @@ index 8153d28..3c370fe 100644
      if (FAILED(hr)) {
          error_report("WHPX: Failed to create partition, hr=%08x", hr);
          ret = -EINVAL;
-@@ -2596,7 +2615,7 @@ static int whpx_accel_init(MachineState *ms)
+@@ -2596,7 +2632,7 @@ static int whpx_accel_init(MachineState *ms)
       * Query the XSAVE capability of the partition. Any error here is not
       * considered fatal.
       */
@@ -404,7 +421,7 @@ index 8153d28..3c370fe 100644
          whpx->partition,
          WHvPartitionPropertyCodeProcessorXsaveFeatures,
          &whpx_xsave_cap,
-@@ -2617,7 +2636,7 @@ static int whpx_accel_init(MachineState *ms)
+@@ -2617,7 +2653,7 @@ static int whpx_accel_init(MachineState *ms)
  
      memset(&prop, 0, sizeof(WHV_PARTITION_PROPERTY));
      prop.ProcessorCount = ms->smp.cpus;
@@ -413,7 +430,7 @@ index 8153d28..3c370fe 100644
          whpx->partition,
          WHvPartitionPropertyCodeProcessorCount,
          &prop,
-@@ -2647,7 +2666,7 @@ static int whpx_accel_init(MachineState *ms)
+@@ -2647,7 +2683,7 @@ static int whpx_accel_init(MachineState *ms)
          WHV_X64_LOCAL_APIC_EMULATION_MODE mode =
              WHvX64LocalApicEmulationModeXApic;
          printf("WHPX: setting APIC emulation mode in the hypervisor\n");
@@ -422,7 +439,7 @@ index 8153d28..3c370fe 100644
              whpx->partition,
              WHvPartitionPropertyCodeLocalApicEmulationMode,
              &mode,
-@@ -2673,7 +2692,7 @@ static int whpx_accel_init(MachineState *ms)
+@@ -2673,7 +2709,7 @@ static int whpx_accel_init(MachineState *ms)
          prop.ExtendedVmExits.X64ApicInitSipiExitTrap = 1;
      }
  
@@ -431,7 +448,7 @@ index 8153d28..3c370fe 100644
              whpx->partition,
              WHvPartitionPropertyCodeExtendedVmExits,
              &prop,
-@@ -2684,7 +2703,7 @@ static int whpx_accel_init(MachineState *ms)
+@@ -2684,7 +2720,7 @@ static int whpx_accel_init(MachineState *ms)
          goto error;
      }
  
@@ -440,7 +457,7 @@ index 8153d28..3c370fe 100644
          whpx->partition,
          WHvPartitionPropertyCodeCpuidExitList,
          cpuidExitList,
-@@ -2710,7 +2729,7 @@ static int whpx_accel_init(MachineState *ms)
+@@ -2710,7 +2746,7 @@ static int whpx_accel_init(MachineState *ms)
          goto error;
      }
  
@@ -449,7 +466,7 @@ index 8153d28..3c370fe 100644
      if (FAILED(hr)) {
          error_report("WHPX: Failed to setup partition, hr=%08x", hr);
          ret = -EINVAL;
-@@ -2725,7 +2744,7 @@ static int whpx_accel_init(MachineState *ms)
+@@ -2725,7 +2761,7 @@ static int whpx_accel_init(MachineState *ms)
  error:
  
      if (NULL != whpx->partition) {
@@ -458,65 +475,3 @@ index 8153d28..3c370fe 100644
          whpx->partition = NULL;
      }
  
-diff --git a/target/i386/whpx/whpx-apic.c b/target/i386/whpx/whpx-apic.c
-index 5372bfe..e721307 100644
---- a/target/i386/whpx/whpx-apic.c
-+++ b/target/i386/whpx/whpx-apic.c
-@@ -102,7 +102,7 @@ static void whpx_put_apic_base(CPUState *cpu, uint64_t val)
-     WHV_REGISTER_VALUE reg_value = {.Reg64 = val};
-     WHV_REGISTER_NAME reg_name = WHvX64RegisterApicBase;
- 
--    hr = whp_dispatch.WHvSetVirtualProcessorRegisters(
-+    hr = WHPX_CALL(WHvSetVirtualProcessorRegisters)(
-              whpx_global.partition,
-              cpu->cpu_index,
-              &reg_name, 1,
-@@ -137,7 +137,7 @@ static void whpx_apic_put(CPUState *cs, run_on_cpu_data data)
-     whpx_put_apic_base(CPU(s->cpu), s->apicbase);
-     whpx_put_apic_state(s, &kapic);
- 
--    hr = whp_dispatch.WHvSetVirtualProcessorInterruptControllerState2(
-+    hr = WHPX_CALL(WHvSetVirtualProcessorInterruptControllerState2)(
-         whpx_global.partition,
-         cs->cpu_index,
-         &kapic,
-@@ -157,7 +157,7 @@ void whpx_apic_get(DeviceState *dev)
-     CPUState *cpu = CPU(s->cpu);
-     struct whpx_lapic_state kapic;
- 
--    HRESULT hr = whp_dispatch.WHvGetVirtualProcessorInterruptControllerState2(
-+    HRESULT hr = WHPX_CALL(WHvGetVirtualProcessorInterruptControllerState2)(
-         whpx_global.partition,
-         cpu->cpu_index,
-         &kapic,
-@@ -206,7 +206,7 @@ static void whpx_send_msi(MSIMessage *msg)
-         .Vector = vector,
-         .Destination = dest,
-     };
--    HRESULT hr = whp_dispatch.WHvRequestInterrupt(whpx_global.partition,
-+    HRESULT hr = WHPX_CALL(WHvRequestInterrupt)(whpx_global.partition,
-                      &interrupt, sizeof(interrupt));
-     if (FAILED(hr)) {
-         fprintf(stderr, "whpx: injection failed, MSI (%llx, %x) delivery: %d, "
-diff --git a/target/i386/whpx/whpx-internal.h b/target/i386/whpx/whpx-internal.h
-index 2627a92..5d4a94f 100644
---- a/target/i386/whpx/whpx-internal.h
-+++ b/target/i386/whpx/whpx-internal.h
-@@ -114,6 +114,17 @@ struct WHPDispatch {
- 
- extern struct WHPDispatch whp_dispatch;
- 
-+#ifdef __COSMOPOLITAN__
-+/*
-+ * Set QEMU_WHPX_TRACE=1 to print the name of every WHP call just before it is
-+ * made; the last line before a crash names the API that was running.
-+ */
-+void whpx_trace_name(const char *name);
-+#define WHPX_CALL(fn) (whpx_trace_name(#fn), whp_dispatch.fn)
-+#else
-+#define WHPX_CALL(fn) whp_dispatch.fn
-+#endif
-+
- bool init_whp_dispatch(void);
- 
- typedef enum WHPFunctionList {

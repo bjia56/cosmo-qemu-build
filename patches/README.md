@@ -30,7 +30,7 @@ version, and applied in filename order.
 | `12-cosmo-crash-reports` | Call Cosmopolitan's `ShowCrashReports()` at the start of `main()`, so a crash, abort or `SIGFPE` prints registers, a backtrace and a `cosmoaddr2line` command instead of a bare "terminating on uncaught signal". |
 | `13-cosmo-block-sizes-sanity` | A block-size probe that reports success with zero sizes made `blkconf_blocksizes()` divide by zero (SIGFPE) on Windows. Ignore such a probe with a warning, and fail with an error that prints the state if the sizes are still zero. |
 | `14-cosmo-file-posix-unsupported-flags` | Cosmopolitan defines an `O_*` flag a system lacks as all ones, not zero (`O_ASYNC` is `0xffffffff` on Windows), so the `(open_flags & O_ASYNC) == 0` assertion in `raw_reconfigure_getfd()` always failed there, aborting at shutdown. Skip it on Cosmopolitan. |
-| `15-cosmo-whpx-trace` | Opt-in tracing for debugging WHPX: with `QEMU_WHPX_TRACE` set, print the name of every WHP call (and emulator callback) just before it is made, so the last line before a crash names the API. |
+| `15-cosmo-whpx-trace` | Opt-in tracing for debugging WHPX: with `QEMU_WHPX_TRACE` set, record the name of every WHP call (and emulator callback) just before it is made, so the last line before a crash names the API. `1` prints to stderr; any other value is a file name, appended to per line so a crash cannot lose it. |
 
 Patches `04`-`15` are only needed for the system emulators; they are harmless
 for the `qemu-img` build.
