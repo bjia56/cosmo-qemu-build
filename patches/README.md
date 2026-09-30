@@ -32,8 +32,9 @@ version, and applied in filename order.
 | `14-cosmo-file-posix-unsupported-flags` | Cosmopolitan defines an `O_*` flag a system lacks as all ones, not zero (`O_ASYNC` is `0xffffffff` on Windows), so the `(open_flags & O_ASYNC) == 0` assertion in `raw_reconfigure_getfd()` always failed there, aborting at shutdown. Skip it on Cosmopolitan. |
 | `15-cosmo-whpx-ignore-invalid-msi` | With the in-kernel APIC, the guest's startup produces one all-zero MSI (fixed interrupt, vector 0). `WHvRequestInterrupt` fast-fails (`0xC0000409`) on it instead of returning an error, so `whpx_send_msi()` drops fixed interrupts below vector 16. Without this the default (in-kernel irqchip) WHPX configuration crashes on Windows. |
 | `16-cosmo-mcosmo-name-collisions` | The build compiles QEMU with `-mcosmo` (`_COSMO_SOURCE`). Cosmopolitan's headers then `#define` `startswith` and `rdrand`, colliding with QEMU's static `startswith()` in `gdbstub.c` (renamed) and with the `rdrand` TCG helper (`#undef rdrand` in `translate.c` and `int_helper.c`, so the helper keeps one name in both). |
+| `17-cosmo-aarch64-cache-macos` | On an aarch64 host, QEMU reads `CTR_EL0` to size and flush the caches, which raises `SIGILL` on macOS (a crash before `main()`). Outside Linux, skip that read (line sizes fall back to `sysconf`/64) and flush through Cosmopolitan's `__clear_cache()`, which calls the macOS `sys_icache_invalidate`. |
 
-Patches `04`-`16` are only needed for the system emulators; they are harmless
+Patches `04`-`17` are only needed for the system emulators; they are harmless
 for the `qemu-img` build.
 
 ### Building system emulators

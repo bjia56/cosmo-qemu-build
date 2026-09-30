@@ -1,0 +1,46 @@
+diff --git a/util/cacheflush.c b/util/cacheflush.c
+index a089061..8706a78 100644
+--- a/util/cacheflush.c
++++ b/util/cacheflush.c
+@@ -6,6 +6,9 @@
+  */
+ 
+ #include "qemu/osdep.h"
++#ifdef __COSMOPOLITAN__
++#include <cosmo.h>
++#endif
+ #include "qemu/cacheflush.h"
+ #include "qemu/cacheinfo.h"
+ #include "qemu/bitops.h"
+@@ -132,6 +135,13 @@ static void arch_cache_info(int *isize, int *dsize)
+ {
+     uint64_t ctr;
+ 
++#ifdef __COSMOPOLITAN__
++    /* Reading CTR_EL0 raises SIGILL under macOS; sizes fall back to sysconf */
++    if (!IsLinux()) {
++        return;
++    }
++#endif
++
+     /*
+      * The real cache geometry is in CCSIDR_EL1/CLIDR_EL1/CSSELR_EL1,
+      * but (at least under Linux) these are marked protected by the
+@@ -266,6 +276,17 @@ void flush_idcache_range(uintptr_t rx, uintptr_t rw, size_t len)
+     const uintptr_t dcache_lsize = qemu_dcache_linesize;
+     uintptr_t p;
+ 
++#ifdef __COSMOPOLITAN__
++    if (!IsLinux()) {
++        /* Cosmopolitan's __clear_cache() knows how to do this on macOS */
++        __builtin___clear_cache((char *)rw, (char *)(rw + len));
++        if (rx != rw) {
++            __builtin___clear_cache((char *)rx, (char *)(rx + len));
++        }
++        return;
++    }
++#endif
++
+     /*
+      * If CTR_EL0.IDC is enabled, Data cache clean to the Point of Unification
+      * is not required for instruction to data coherence.
