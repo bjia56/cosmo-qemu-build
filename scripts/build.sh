@@ -650,20 +650,31 @@ link_fat() {
 # The loader that runs an APE on Apple Silicon is compiled on first use and
 # cached in ${TMPDIR:-$HOME} under a name shared by all APE programs. Ours is
 # modified to sign itself with the hypervisor entitlement (compat/ape), so it
-# gets its own cache name and must not defer to a system-wide "ape". Both
-# replacements have the same length as the original, so no offset in the
-# script header changes.
+# gets its own cache name (versioned: bump it when the loader changes, a cached
+# loader of the same name is reused as is) and must not defer to a system-wide
+# "ape". This edits two lines of the shell script that apelink puts at the start
+# of the file, with replacements of the same length, so no offset in it changes;
+# the build fails if apelink's script is not exactly what is expected.
 private_loader() {
     python3 - "$1" <<'PYEOF'
 import sys
 path = sys.argv[1]
+edits = (
+    # never use an "ape" found in PATH: replace the test (always false), so
+    # the "exec ape" after it can never run
+    (b'&& type ape >/dev/null 2>&1 && exec ape "$o" "$@"',
+     b'&& false    >/dev/null 2>&1 && exec ape "$o" "$@"'),
+    # the cache name of the loader (change the number with the loader)
+    (b't="${TMPDIR:-${HOME:-.}}/.ape-1.10"',
+     b't="${TMPDIR:-${HOME:-.}}/.cqape-01"'),
+)
 with open(path, "r+b") as f:
     head = bytearray(f.read(262144))
-    for old, new in ((b".ape-1.10", b".qemu-ape"), (b"type ape ", b"type apx ")):
+    for old, new in edits:
         assert len(old) == len(new)
         n = head.count(old)
-        if n < 1 or n > 4:
-            sys.exit("unexpected number of %r in the APE header: %d" % (old, n))
+        if n < 1 or n > 2:
+            sys.exit("apelink's script header is not as expected: %r found %d times" % (old, n))
         head = head.replace(old, new)
     f.seek(0)
     f.write(head)
