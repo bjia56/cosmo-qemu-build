@@ -31,8 +31,8 @@ executable compiles on its first run (this needs the Xcode command line tools, a
 program). The executables use their own loader, `.q.ape-01` in `${TMPDIR:-$HOME}`, which signs itself with the
 entitlement on first use, so HVF works without any setup. See [`patches/README.md`](patches/README.md).
 
-Not included: network block drivers (curl, ssh, nfs, rbd, gluster), encryption backed by
-gnutls/nettle/gcrypt, Linux-specific I/O (io_uring, linux-aio), 9p/virtfs,
+Not included: network block drivers (curl, ssh, nfs, rbd, gluster), TLS (gnutls), RSA/public-key
+crypto, libgcrypt, Linux-specific I/O (io_uring, linux-aio), 9p/virtfs,
 graphics front ends (SDL, GTK, ...), and vhost.
 
 ## Getting the binaries
@@ -81,7 +81,7 @@ and are not stored in this repository.
 The executables are built from [QEMU](https://www.qemu.org/), which is licensed under the GPL-2.0, see
 [COPYING](https://gitlab.com/qemu-project/qemu/-/blob/master/COPYING). They statically link
 [Cosmopolitan Libc](https://github.com/jart/cosmopolitan) (ISC, with the notices of the third-party code it
-bundles embedded in the executables), glib and proxy-libintl (LGPL-2.1+), pcre2 (BSD), bzip2 (bzip2 license), zstd (BSD-3-Clause), libffi (MIT), zlib
+bundles embedded in the executables), glib and proxy-libintl (LGPL-2.1+), pcre2 (BSD), nettle (LGPL-3.0+ or GPL-2.0+, used under the GPL), bzip2 (bzip2 license), zstd (BSD-3-Clause), libffi (MIT), zlib
 (zlib), pixman (MIT) and libslirp (BSD-3-Clause). `COPYING` and `THIRD_PARTY_NOTICES.txt`, with all of their license texts, are
 embedded in each executable.
 

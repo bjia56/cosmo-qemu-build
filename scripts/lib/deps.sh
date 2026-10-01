@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # SPDX-License-Identifier: MIT
-# Static dependencies (zlib, pcre2, bzip2, zstd, libffi, glib, pixman, libslirp) built into a per-architecture sysroot.
+# Static dependencies (zlib, pcre2, nettle, bzip2, zstd, libffi, glib, pixman, libslirp) built into a per-architecture sysroot.
 # Sourced by scripts/build.sh; relies on the variables it defines.
 
 exe_wrapper_for() {
@@ -30,6 +30,10 @@ build_deps() {
     # pcre2
     mkdir -p "${B}/pcre2" && cd "${B}/pcre2"
     run_logged "${arch}-pcre2" bash -c "'${SRC_DIR}/pcre2-${PCRE2_VERSION}/configure' --prefix='${S}' --host=${host_triplet} --disable-shared --enable-static && make -j${JOBS} && make install"
+
+    # nettle: no GMP (so no hogweed), and no assembler, which cosmocc may not take
+    mkdir -p "${B}/nettle" && cd "${B}/nettle"
+    run_logged "${arch}-nettle" bash -c "'${SRC_DIR}/nettle-${NETTLE_VERSION}/configure' --prefix='${S}' --libdir='${S}/lib' --host=${host_triplet} --disable-shared --enable-static --disable-public-key --disable-assembler --disable-documentation --disable-openssl && make -j${JOBS} && make install"
 
     # bzip2 (only the library; it builds in the source tree, so use a copy)
     mkdir -p "${B}/bzip2" "${S}/include" "${S}/lib" && cp -r "${SRC_DIR}/bzip2-${BZIP2_VERSION}/." "${B}/bzip2"

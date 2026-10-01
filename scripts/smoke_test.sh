@@ -67,6 +67,13 @@ q convert -f qcow2 -O raw zs.qcow2 zs.raw
 cmp a.raw zs.raw
 pass "zstd compressed qcow2 round trip"
 
+q create -f luks --object secret,id=sec0,data=hunter2 -o key-secret=sec0 l.luks 4M >/dev/null
+q info --object secret,id=sec0,data=hunter2 --image-opts driver=luks,file.filename=l.luks,key-secret=sec0 | grep -q 'format: luks'
+q convert -f raw -O luks --object secret,id=sec0,data=hunter2 -o key-secret=sec0 a.raw lc.luks
+q convert --object secret,id=sec0,data=hunter2 --image-opts -O raw driver=luks,file.filename=lc.luks,key-secret=sec0 l.raw
+cmp a.raw l.raw
+pass "luks encrypted round trip"
+
 q snapshot -c s1 c.qcow2
 q snapshot -l c.qcow2 | grep -q s1
 pass "snapshot"
