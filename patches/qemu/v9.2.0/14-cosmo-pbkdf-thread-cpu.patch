@@ -1,0 +1,23 @@
+--- a/crypto/pbkdf.c
++++ b/crypto/pbkdf.c
+@@ -69,6 +69,20 @@
+     *val_ms = ((info.user_time.seconds * 1000ll) +
+                (info.user_time.microseconds / 1000));
+     return 0;
++#elif defined(__COSMOPOLITAN__)
++    /*
++     * RUSAGE_THREAD is a run-time value under Cosmopolitan, so it is not a
++     * macro for the check below. CLOCK_THREAD_CPUTIME_ID works on every host.
++     */
++    struct timespec ts;
++
++    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) < 0) {
++        error_setg_errno(errp, errno, "Unable to get thread CPU usage");
++        return -1;
++    }
++
++    *val_ms = ((ts.tv_sec * 1000ll) + (ts.tv_nsec / 1000000));
++    return 0;
+ #elif defined(RUSAGE_THREAD)
+     struct rusage ru;
+     if (getrusage(RUSAGE_THREAD, &ru) < 0) {
