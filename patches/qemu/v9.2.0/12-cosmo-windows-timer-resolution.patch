@@ -1,0 +1,32 @@
+--- a/util/main-loop.c
++++ b/util/main-loop.c
+@@ -37,6 +37,10 @@
+ 
+ #ifndef _WIN32
+ #include <sys/wait.h>
++#ifdef __COSMOPOLITAN__
++#include <cosmo.h>
++#include <libc/nt/ntdll.h>
++#endif
+ #endif
+ 
+ #ifndef _WIN32
+@@ -158,6 +162,18 @@
+     int ret;
+     GSource *src;
+ 
++#ifdef __COSMOPOLITAN__
++    if (IsWindows()) {
++        /*
++         * Windows rounds every timed wait up to its 15.6 ms tick unless
++         * asked otherwise; native QEMU does timeBeginPeriod(1) for this.
++         * The units are 100 ns.
++         */
++        uint32_t actual;
++        NtSetTimerResolution(10000, true, &actual);
++    }
++#endif
++
+     init_clocks(qemu_timer_notify_cb);
+ 
+     ret = qemu_signal_init(errp);
