@@ -15,6 +15,7 @@ write_notices() {
             "Cosmopolitan Libc ${COSMOPOLITAN_VERSION}|${DL_DIR}/cosmopolitan-LICENSE" \
             "glib ${GLIB_VERSION}|${SRC_DIR}/glib/COPYING" \
             "proxy-libintl ${PROXY_LIBINTL_VERSION}|${SRC_DIR}/glib/subprojects/proxy-libintl/COPYING" \
+            "libpng ${LIBPNG_VERSION}|${SRC_DIR}/libpng-${LIBPNG_VERSION}/LICENSE" \
             "pcre2 ${PCRE2_VERSION}|${SRC_DIR}/pcre2-${PCRE2_VERSION}/LICENCE.md" \
             "nettle ${NETTLE_VERSION} (used under GPL-2.0-or-later)|${SRC_DIR}/nettle-${NETTLE_VERSION}/COPYINGv2" \
             "bzip2 ${BZIP2_VERSION}|${SRC_DIR}/bzip2-${BZIP2_VERSION}/LICENSE" \

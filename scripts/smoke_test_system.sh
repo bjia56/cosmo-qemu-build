@@ -82,6 +82,7 @@ fi
 case "$GUEST" in
 x86_64)
     MACHINE_ARGS="-machine pc -accel tcg"
+    GPU_ARGS="-vga std"
     # Boot sector that prints a message on COM1, waiting for the UART each byte
     printf '\276\035\174\254\204\300\164\022\210\303\272\375\003\354\250\040\164\370\272\370\003\210\330\356\353\351\364\353\375COSMO-X86-BOOT-OK\r\n\0' > boot.img
     pad=$((510 - $(wc -c < boot.img)))
@@ -122,6 +123,7 @@ x86_64)
     ;;
 aarch64)
     MACHINE_ARGS="-machine virt -cpu cortex-a57 -accel tcg"
+    GPU_ARGS="-device virtio-gpu-pci"
     # Bare-metal payload for the virt machine's PL011 UART at 0x09000000. It is loaded
     # above the start of RAM, where virt puts its device tree.
     printf '\001\040\241\322\342\000\000\020\103\024\100\070\143\000\000\064\043\000\000\071\375\377\377\027\177\040\003\325\377\377\377\027COSMO-AARCH64-BOOT-OK\n\0' > payload.bin
@@ -202,5 +204,15 @@ grep -a -q "tcp:127.0.0.1:$((PORT + 1))" out.txt || fail "-serial tcp:host:port 
 grep -a -q "c0: filename=null" out.txt || fail "-readconfig chardev"
 grep -a -q '52:54:00:aa:bb:cc' out.txt || fail "-global property reaches the device"
 pass "-serial tcp: shorthand, -readconfig and -global parsing"
+
+# Display output: a screendump of the (blank) guest screen goes through pixman
+# and, as PNG, through libpng
+monitor_cmds "screendump shot.ppm
+screendump shot.png -f png" $GPU_ARGS \
+    || fail "screendump (monitor did not finish)"
+[ "$(head -c 2 shot.ppm)" = "P6" ] || fail "screendump writes a PPM"
+# the PNG signature: 89 50 4e 47 0d 0a 1a 0a
+[ "$(head -c 8 shot.png | od -An -tx1 | tr -d ' \n')" = "89504e470d0a1a0a" ] || fail "screendump -f png writes a PNG"
+pass "screendump as PPM and PNG"
 
 echo "All system emulator smoke tests passed"

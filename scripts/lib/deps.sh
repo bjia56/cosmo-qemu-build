@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # SPDX-License-Identifier: MIT
-# Static dependencies (zlib, pcre2, nettle, bzip2, zstd, libffi, glib, pixman, libslirp) built into a per-architecture sysroot.
+# Static dependencies (zlib, libpng, pcre2, nettle, bzip2, zstd, libffi, glib, pixman, libslirp) built into a per-architecture sysroot.
 # Sourced by scripts/build.sh; relies on the variables it defines.
 
 exe_wrapper_for() {
@@ -26,6 +26,10 @@ build_deps() {
     # zlib
     mkdir -p "${B}/zlib" && cp -r "${SRC_DIR}/zlib-${ZLIB_VERSION}/." "${B}/zlib"
     run_logged "${arch}-zlib" bash -c "cd '${B}/zlib' && ./configure --prefix='${S}' --static && make -j${JOBS} && make install"
+
+    # libpng (screendump -f png); needs the zlib built above
+    mkdir -p "${B}/libpng" && cd "${B}/libpng"
+    run_logged "${arch}-libpng" bash -c "CPPFLAGS='-I${S}/include' LDFLAGS='-L${S}/lib' '${SRC_DIR}/libpng-${LIBPNG_VERSION}/configure' --prefix='${S}' --host=${host_triplet} --disable-shared --enable-static --disable-tools --disable-hardware-optimizations && make -j${JOBS} && make install"
 
     # pcre2
     mkdir -p "${B}/pcre2" && cd "${B}/pcre2"

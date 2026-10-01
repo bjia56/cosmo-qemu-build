@@ -116,6 +116,11 @@ LIBFFI_VERSION="3.8.0"
 LIBFFI_URL="${UBUNTU_POOL}/libf/libffi/libffi_${LIBFFI_VERSION}.orig.tar.gz"
 LIBFFI_SHA256="bf40d752d8f5fd4505bcd1c7d4208ea87fd12c91f087e359651c776748352dc0"
 
+# Ubuntu's source package for libpng is libpng1.6; the tarball unpacks to libpng-<version>
+LIBPNG_VERSION="1.6.58"
+LIBPNG_URL="${UBUNTU_POOL}/libp/libpng1.6/libpng1.6_${LIBPNG_VERSION}.orig.tar.gz"
+LIBPNG_SHA256="a9d4df463d36a6e5f9c29bd6f4967312d17e996c1854f3511f833924eb1993cf"
+
 # nettle provides QEMU's crypto (LUKS, qcow2 encryption); built without GMP, so no public-key code
 NETTLE_VERSION="3.10.2"
 NETTLE_URL="${UBUNTU_POOL}/n/nettle/nettle_${NETTLE_VERSION}.orig.tar.gz"
@@ -213,6 +218,7 @@ echo "Fetching sources..."
 download "${ZLIB_SHA256}" "zlib-${ZLIB_VERSION}.tar.gz" "${ZLIB_URL}"
 download "${PCRE2_SHA256}" "pcre2-${PCRE2_VERSION}.tar.gz" "${PCRE2_URL}"
 download "${LIBFFI_SHA256}" "libffi-${LIBFFI_VERSION}.tar.gz" "${LIBFFI_URL}"
+download "${LIBPNG_SHA256}" "libpng-${LIBPNG_VERSION}.tar.gz" "${LIBPNG_URL}"
 download "${NETTLE_SHA256}" "nettle-${NETTLE_VERSION}.tar.gz" "${NETTLE_URL}"
 download "${BZIP2_SHA256}" "bzip2-${BZIP2_VERSION}.tar.gz" "${BZIP2_URL}"
 download "${ZSTD_SHA256}" "zstd-${ZSTD_VERSION}.tar.xz" "${ZSTD_URL}"
@@ -223,6 +229,7 @@ mkdir "${SRC_DIR}/zlib-${ZLIB_VERSION}"
 tar -xf "${DL_DIR}/zlib-${ZLIB_VERSION}.tar.gz" -C "${SRC_DIR}/zlib-${ZLIB_VERSION}" --strip-components=1
 tar -xf "${DL_DIR}/pcre2-${PCRE2_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/libffi-${LIBFFI_VERSION}.tar.gz" -C "${SRC_DIR}"
+tar -xf "${DL_DIR}/libpng-${LIBPNG_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/nettle-${NETTLE_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/bzip2-${BZIP2_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/zstd-${ZSTD_VERSION}.tar.xz" -C "${SRC_DIR}"

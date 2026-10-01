@@ -55,7 +55,6 @@ build_qemu() {
     #  --disable-stack-protector  cosmocc constructors run before TLS is set up
     #  --with-coroutine=ucontext  the sigaltstack backend deadlocks under cosmo
     #  --disable-plugins          TCG plugins are loaded with dlopen
-    #  --disable-png              never link a host libpng
     #  the rest strips everything cosmocc cannot build or QEMU does not need
     run_logged "${arch}-qemu-configure" env \
         PKG_CONFIG_PATH="${S}/lib/pkgconfig" PKG_CONFIG_LIBDIR="${S}/lib/pkgconfig" \
@@ -67,7 +66,7 @@ build_qemu() {
         --disable-user --disable-docs --disable-guest-agent --disable-virtfs \
         --enable-tools --disable-werror \
         --disable-stack-protector --with-coroutine=ucontext \
-        --disable-plugins --disable-png \
+        --disable-plugins --enable-png \
         --disable-linux-aio --disable-linux-io-uring \
         --disable-vhost-user --disable-vhost-kernel --disable-vhost-user-blk-server \
         --disable-vduse-blk-export --disable-libvduse \
