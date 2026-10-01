@@ -32,8 +32,12 @@ build_deps() {
     run_logged "${arch}-pcre2" bash -c "'${SRC_DIR}/pcre2-${PCRE2_VERSION}/configure' --prefix='${S}' --host=${host_triplet} --disable-shared --enable-static && make -j${JOBS} && make install"
 
     # libffi (static trampolines need a raw mmap of the exec file, unsupported here)
+    # The Ubuntu orig tarball has no configure script, so generate it (in a copy,
+    # since the source tree is shared by the architectures)
+    mkdir -p "${B}/libffi-src" && cp -r "${SRC_DIR}/libffi-${LIBFFI_VERSION}/." "${B}/libffi-src"
+    run_logged "${arch}-libffi-autoreconf" bash -c "cd '${B}/libffi-src' && autoreconf -fi"
     mkdir -p "${B}/libffi" && cd "${B}/libffi"
-    run_logged "${arch}-libffi" bash -c "'${SRC_DIR}/libffi-${LIBFFI_VERSION}/configure' --prefix='${S}' --host=${host_triplet} --disable-shared --enable-static --disable-exec-static-tramp && make -j${JOBS} && make install"
+    run_logged "${arch}-libffi" bash -c "'${B}/libffi-src/configure' --prefix='${S}' --host=${host_triplet} --disable-shared --enable-static --disable-exec-static-tramp && make -j${JOBS} && make install"
     unset CC AR RANLIB
 
     # glib: only glib, gmodule and gthread are needed by QEMU. gio does not

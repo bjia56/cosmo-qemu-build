@@ -17,22 +17,17 @@ run_logged() {
     fi
 }
 
-# download <sha256> <output name> <url>...: try each URL until one matches
+# download <sha256> <output name> <url>: fetch the file and verify its checksum
 download() {
-    local sha=$1 name=$2; shift 2
-    local out="${DL_DIR}/${name}" url
+    local sha=$1 name=$2 url=$3
+    local out="${DL_DIR}/${name}"
     if [ -f "$out" ] && echo "${sha}  ${out}" | sha256sum -c --status; then
         return 0
     fi
-    for url in "$@"; do
-        echo "  downloading ${name} from ${url}"
-        if curl --retry 5 --retry-delay 5 -sSfL -o "$out" "$url" \
-            && echo "${sha}  ${out}" | sha256sum -c --status; then
-            return 0
-        fi
-        echo "  (failed or checksum mismatch, trying next mirror)"
-    done
-    die "could not download ${name} with a matching checksum"
+    echo "  downloading ${name} from ${url}"
+    curl --retry 5 --retry-delay 5 -sSfL -o "$out" "$url" \
+        && echo "${sha}  ${out}" | sha256sum -c --status \
+        || die "could not download ${name} with a matching checksum"
 }
 
 # clone_tag <repo> <tag> <dest> <commit>: the tag must resolve to the given commit

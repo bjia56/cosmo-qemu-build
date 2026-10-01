@@ -11,7 +11,7 @@ moving to a newer upstream means resolving conflicts one topic at a time.
 | --- | --- |
 | `01-cosmo-portability` | `O_NONBLOCK`, `POLL*` and `AF_*`/`MSG_*` are runtime values under Cosmopolitan: drop the compile-time `O_NONBLOCK` assertion, fall back to the Linux constants for `glibconfig.h` when the build-time probe cannot compute them, and translate `G_IO_*` to and from the runtime `POLL*` values around `poll()` (they differ on Windows). |
 
-## `libslirp/4.9.1`
+## `libslirp/4.9.3`
 
 | Patch | Purpose |
 | --- | --- |

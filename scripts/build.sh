@@ -96,30 +96,34 @@ PROXY_LIBINTL_VERSION="0.4"
 PROXY_LIBINTL_COMMIT="c03e1a74b17fa7ec467e110130775409e4828a4c"
 PROXY_LIBINTL_REPO="https://github.com/frida/proxy-libintl.git"
 
-ZLIB_VERSION="1.3.1"
-ZLIB_URLS=("https://github.com/madler/zlib/releases/download/v${ZLIB_VERSION}/zlib-${ZLIB_VERSION}.tar.gz")
-ZLIB_SHA256="9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
+# The small libraries come from the Ubuntu archive (the "orig" tarball of the
+# newest release's source package), with no fallback mirror. Versions follow the
+# newest Ubuntu series; the tarballs are verified by SHA-256.
+UBUNTU_POOL="${UBUNTU_POOL:-https://archive.ubuntu.com/ubuntu/pool/main}"
 
-PCRE2_VERSION="10.44"
-PCRE2_URLS=("https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${PCRE2_VERSION}/pcre2-${PCRE2_VERSION}.tar.bz2")
-PCRE2_SHA256="d34f02e113cf7193a1ebf2770d3ac527088d485d4e047ed10e5d217c6ef5de96"
+# Ubuntu repacks zlib; the tarball unpacks to zlib-<ZLIB_ORIG_VERSION>
+ZLIB_VERSION="1.3.2"
+ZLIB_ORIG_VERSION="1.3.dfsg+really${ZLIB_VERSION}"
+ZLIB_URL="${UBUNTU_POOL}/z/zlib/zlib_${ZLIB_ORIG_VERSION}.orig.tar.gz"
+ZLIB_SHA256="7b6903eb019983987b7112eccf90f1703f1c6c0e0cede36564bf611d19ca579d"
 
-LIBFFI_VERSION="3.4.6"
-LIBFFI_URLS=("https://github.com/libffi/libffi/releases/download/v${LIBFFI_VERSION}/libffi-${LIBFFI_VERSION}.tar.gz")
-LIBFFI_SHA256="b0dea9df23c863a7a50e825440f3ebffabd65df1497108e5d437747843895a4e"
+PCRE2_VERSION="10.46"
+PCRE2_URL="${UBUNTU_POOL}/p/pcre2/pcre2_${PCRE2_VERSION}.orig.tar.gz"
+PCRE2_SHA256="8d28d7f2c3b970c3a4bf3776bcbb5adfc923183ce74bc8df1ebaad8c1985bd07"
 
-# The first mirror hosts the upstream tarball as a Debian/Ubuntu "orig" file
-PIXMAN_VERSION="0.44.0"
-PIXMAN_URLS=(
-    "https://archive.ubuntu.com/ubuntu/pool/main/p/pixman/pixman_${PIXMAN_VERSION}.orig.tar.gz"
-    "https://cairographics.org/releases/pixman-${PIXMAN_VERSION}.tar.gz"
-)
-PIXMAN_SHA256="89a4c1e1e45e0b23dffe708202cb2eaffde0fe3727d7692b2e1739fec78a7dac"
+# The orig tarball is a source snapshot without a configure script (see build_deps)
+LIBFFI_VERSION="3.8.0"
+LIBFFI_URL="${UBUNTU_POOL}/libf/libffi/libffi_${LIBFFI_VERSION}.orig.tar.gz"
+LIBFFI_SHA256="bf40d752d8f5fd4505bcd1c7d4208ea87fd12c91f087e359651c776748352dc0"
+
+PIXMAN_VERSION="0.46.4"
+PIXMAN_URL="${UBUNTU_POOL}/p/pixman/pixman_${PIXMAN_VERSION}.orig.tar.gz"
+PIXMAN_SHA256="d09c44ebc3bd5bee7021c79f922fe8fb2fb57f7320f55e97ff9914d2346a591c"
 
 # libslirp (user-mode networking); the tarball unpacks to libslirp-v<version>
-LIBSLIRP_VERSION="4.9.1"
-LIBSLIRP_URLS=("https://archive.ubuntu.com/ubuntu/pool/main/libs/libslirp/libslirp_${LIBSLIRP_VERSION}.orig.tar.bz2")
-LIBSLIRP_SHA256="3caff6e2de445f4995629d4929c55419f661b2b1d14f12481e155a71c1e8f811"
+LIBSLIRP_VERSION="4.9.3"
+LIBSLIRP_URL="${UBUNTU_POOL}/libs/libslirp/libslirp_${LIBSLIRP_VERSION}.orig.tar.bz2"
+LIBSLIRP_SHA256="c82e22c73bdc3f2c038e538d4f0c9c2166defb2402212d61bb7cb1b530ba952f"
 
 # Cosmopolitan Libc's license, for the notices (the libc is linked into every executable)
 COSMOPOLITAN_VERSION="4.0.2"
@@ -154,7 +158,7 @@ echo ""
 # Tool checks
 # ---------------------------------------------------------------------------
 
-for tool in cosmocc apelink assimilate fixupobj git curl tar sed make patch zip bzip2 ninja python3 meson pkg-config sha256sum; do
+for tool in cosmocc apelink assimilate fixupobj git curl tar sed make patch zip bzip2 ninja python3 meson pkg-config sha256sum autoreconf; do
     command -v "$tool" &>/dev/null || die "$tool not found in PATH
 For cosmocc see https://cosmo.zip/pub/cosmocc/ (or a jart/cosmopolitan GitHub release)"
 done
@@ -192,14 +196,15 @@ mkdir -p "${DL_DIR}" "${LOG_DIR}" "${SRC_DIR}" "${TOOLS_DIR}" "${OUT_DIR}"
 prepare_toolchain
 
 echo "Fetching sources..."
-download "${ZLIB_SHA256}" "zlib-${ZLIB_VERSION}.tar.gz" "${ZLIB_URLS[@]}"
-download "${PCRE2_SHA256}" "pcre2-${PCRE2_VERSION}.tar.bz2" "${PCRE2_URLS[@]}"
-download "${LIBFFI_SHA256}" "libffi-${LIBFFI_VERSION}.tar.gz" "${LIBFFI_URLS[@]}"
-download "${PIXMAN_SHA256}" "pixman-${PIXMAN_VERSION}.tar.gz" "${PIXMAN_URLS[@]}"
-download "${LIBSLIRP_SHA256}" "libslirp-${LIBSLIRP_VERSION}.tar.bz2" "${LIBSLIRP_URLS[@]}"
+download "${ZLIB_SHA256}" "zlib-${ZLIB_VERSION}.tar.gz" "${ZLIB_URL}"
+download "${PCRE2_SHA256}" "pcre2-${PCRE2_VERSION}.tar.gz" "${PCRE2_URL}"
+download "${LIBFFI_SHA256}" "libffi-${LIBFFI_VERSION}.tar.gz" "${LIBFFI_URL}"
+download "${PIXMAN_SHA256}" "pixman-${PIXMAN_VERSION}.tar.gz" "${PIXMAN_URL}"
+download "${LIBSLIRP_SHA256}" "libslirp-${LIBSLIRP_VERSION}.tar.bz2" "${LIBSLIRP_URL}"
 download "${COSMOPOLITAN_LICENSE_SHA256}" "cosmopolitan-LICENSE" "${COSMOPOLITAN_LICENSE_URL}"
-tar -xf "${DL_DIR}/zlib-${ZLIB_VERSION}.tar.gz" -C "${SRC_DIR}"
-tar -xf "${DL_DIR}/pcre2-${PCRE2_VERSION}.tar.bz2" -C "${SRC_DIR}"
+mkdir "${SRC_DIR}/zlib-${ZLIB_VERSION}"
+tar -xf "${DL_DIR}/zlib-${ZLIB_VERSION}.tar.gz" -C "${SRC_DIR}/zlib-${ZLIB_VERSION}" --strip-components=1
+tar -xf "${DL_DIR}/pcre2-${PCRE2_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/libffi-${LIBFFI_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/pixman-${PIXMAN_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/libslirp-${LIBSLIRP_VERSION}.tar.bz2" -C "${SRC_DIR}"
