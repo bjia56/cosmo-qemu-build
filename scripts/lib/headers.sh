@@ -101,3 +101,15 @@ with open(sys.argv[2], "w") as f:
     f.write("};\n")
 PYEOF
 }
+
+# Cosmopolitan Libc's sscanf() lacks %[...] scansets. compat/scanf holds a
+# replacement (cosmo_sscanf, which patches/qemu/*/10-cosmo-sscanf-scansets and
+# patches/libslirp/*/02-cosmo-sscanf-scansets switch both source trees to);
+# copy it into each of them.
+stage_scanf_shim() {
+    local c="${PROJECT_ROOT}/compat/scanf"
+    local slirp="${SRC_DIR}/libslirp-v${LIBSLIRP_VERSION}/src"
+    cp "${c}/cosmo-sscanf.h" "${SRC_DIR}/qemu/include/qemu/"
+    cp "${c}/cosmo-sscanf.c" "${SRC_DIR}/qemu/util/"
+    cp "${c}/cosmo-sscanf.h" "${c}/cosmo-sscanf.c" "${slirp}/"
+}

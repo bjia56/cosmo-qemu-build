@@ -1,0 +1,22 @@
+--- a/src/slirp.h
++++ b/src/slirp.h
+@@ -40,6 +40,9 @@
+ 
+ #include "debug.h"
+ #include "util.h"
++#ifdef __COSMOPOLITAN__
++#include "cosmo-sscanf.h"
++#endif
+ 
+ #include "libslirp.h"
+ #include "ip.h"
+--- a/meson.build
++++ b/meson.build
+@@ -162,6 +162,7 @@
+   'src/udp.c',
+   'src/udp6.c',
+   'src/util.c',
++  'src/cosmo-sscanf.c',
+   'src/version.c',
+   'src/vmstate.c',
+ ]
