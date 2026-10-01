@@ -43,9 +43,9 @@ build_qemu() {
             hvf_flag="--enable-hvf"
             extra_cflags="${extra_cflags} -I${S}/include/hvf"
         fi
-        system_flags=(--target-list="${targets%,}" --enable-slirp ${kvm_flag} ${whpx_flag} ${hvf_flag})
+        system_flags=(--target-list="${targets%,}" --enable-slirp --enable-virtfs ${kvm_flag} ${whpx_flag} ${hvf_flag})
     else
-        system_flags=(--disable-system --disable-slirp)
+        system_flags=(--disable-system --disable-slirp --disable-virtfs)
     fi
 
     # Notes on the flags:
@@ -55,6 +55,8 @@ build_qemu() {
     #  --disable-stack-protector  cosmocc constructors run before TLS is set up
     #  --with-coroutine=ucontext  the sigaltstack backend deadlocks under cosmo
     #  --disable-plugins          TCG plugins are loaded with dlopen
+    #  --enable-virtfs            9p file sharing, with the Cosmopolitan host support from
+    #                             patch 15 (its extended attributes only work on Linux)
     #  the rest strips everything cosmocc cannot build or QEMU does not need
     run_logged "${arch}-qemu-configure" env \
         PKG_CONFIG_PATH="${S}/lib/pkgconfig" PKG_CONFIG_LIBDIR="${S}/lib/pkgconfig" \
@@ -63,7 +65,7 @@ build_qemu() {
         --cross-prefix="${arch}-cosmo-" --cpu="${arch}" --host-cc=cc \
         --extra-cflags="${extra_cflags}" --extra-ldflags="-L${S}/lib" \
         "${system_flags[@]}" \
-        --disable-user --disable-docs --disable-guest-agent --disable-virtfs \
+        --disable-user --disable-docs --disable-guest-agent \
         --enable-tools --disable-werror \
         --disable-stack-protector --with-coroutine=ucontext \
         --disable-plugins --enable-png \

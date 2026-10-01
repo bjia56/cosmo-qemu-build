@@ -215,4 +215,19 @@ screendump shot.png -f png" $GPU_ARGS \
 [ "$(head -c 8 shot.png | od -An -tx1 | tr -d ' \n')" = "89504e470d0a1a0a" ] || fail "screendump -f png writes a PNG"
 pass "screendump as PPM and PNG"
 
+# virtio-9p (virtfs): the local backend has to open the shared directory and the
+# device has to appear with its mount tag, for every security model that works
+# on this host (mapped-xattr needs extended attributes, which only Linux has)
+mkdir share9p
+models="none mapped-file"
+case "$(uname -s)" in Linux) models="$models mapped-xattr passthrough" ;; esac
+for model in $models; do
+    monitor_cmds "info qtree" \
+        -fsdev "local,id=f0,path=share9p,security_model=${model}" \
+        -device virtio-9p-pci,fsdev=f0,mount_tag=cosmo9p \
+        || fail "virtfs ${model} (monitor did not finish)"
+    grep -a -q 'mount_tag = "cosmo9p"' out.txt || fail "virtfs ${model}: virtio-9p device with its mount tag"
+done
+pass "virtio-9p (virtfs) with a local fsdev: $models"
+
 echo "All system emulator smoke tests passed"

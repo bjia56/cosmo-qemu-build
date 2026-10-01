@@ -32,8 +32,28 @@ program). The executables use their own loader, `.q.ape-01` in `${TMPDIR:-$HOME}
 entitlement on first use, so HVF works without any setup. See [`patches/README.md`](patches/README.md).
 
 Not included: network block drivers (curl, ssh, nfs, rbd, gluster), TLS (gnutls), RSA/public-key
-crypto, libgcrypt, Linux-specific I/O (io_uring, linux-aio), 9p/virtfs,
+crypto, libgcrypt, Linux-specific I/O (io_uring, linux-aio),
 graphics front ends (SDL, GTK, ...), and vhost.
+
+## Sharing a host directory (virtfs / 9p)
+
+The system emulators include QEMU's 9p file sharing (`-virtfs` / `-fsdev local` with `virtio-9p-pci`), so a guest
+can mount a host directory with `mount -t 9p -o trans=virtio,version=9p2000.L <mount_tag> /mnt`:
+
+```bash
+./qemu-system-x86_64.com ... -virtfs local,path=/some/dir,mount_tag=host,security_model=mapped-file,id=host
+```
+
+| `security_model` | Linux | macOS | Windows | Notes |
+| --- | --- | --- | --- | --- |
+| `none` | yes | expected | expected | Files are created with the host user's ownership and permissions. |
+| `mapped-file` | yes | expected | expected | Guest ownership and mode are kept in `.virtfs_metadata` files next to the data. |
+| `mapped-xattr` | yes | no | no | Needs extended attributes, which are only reachable on Linux; elsewhere QEMU refuses it at startup. |
+| `passthrough` | yes | no | no | Needs `chown` to arbitrary users, so it is only meant for Linux hosts (as root). |
+
+Device nodes and symlink containment are limited off Linux (see [`patches/README.md`](patches/README.md), patch `15`).
+CI starts the 9p device on Linux only, and a guest mounting a share has only been tried on Linux; "expected" means
+the macOS and Windows code paths are written for it but have not been run (they need real hardware).
 
 ## Getting the binaries
 

@@ -1,0 +1,572 @@
+diff --git a/fsdev/9p-marshal.h b/fsdev/9p-marshal.h
+index f1abbe1..f75ccd0 100644
+--- a/fsdev/9p-marshal.h
++++ b/fsdev/9p-marshal.h
+@@ -47,6 +47,14 @@ typedef struct V9fsIattr {
+     int64_t mtime_nsec;
+ } V9fsIattr;
+ 
++#ifdef __COSMOPOLITAN__
++/* struct stat's nanosecond fields are macros here and collide with ours */
++#undef st_atime_nsec
++#undef st_mtime_nsec
++#undef st_ctime_nsec
++#undef st_birthtime_nsec
++#endif
++
+ typedef struct V9fsStatDotl {
+     uint64_t st_result_mask;
+     V9fsQID qid;
+diff --git a/fsdev/file-op-9p.h b/fsdev/file-op-9p.h
+index 4997677..89afb4c 100644
+--- a/fsdev/file-op-9p.h
++++ b/fsdev/file-op-9p.h
+@@ -22,6 +22,9 @@
+ #ifdef CONFIG_LINUX
+ # include <sys/vfs.h>
+ #endif
++#ifdef __COSMOPOLITAN__
++# include <sys/statfs.h>
++#endif
+ #ifdef CONFIG_DARWIN
+ # include <sys/param.h>
+ # include <sys/mount.h>
+diff --git a/fsdev/meson.build b/fsdev/meson.build
+index c751d8c..04f4689 100644
+--- a/fsdev/meson.build
++++ b/fsdev/meson.build
+@@ -5,6 +5,6 @@ fsdev_ss.add(when: ['CONFIG_FSDEV_9P'], if_true: files(
+   '9p-marshal.c',
+   'qemu-fsdev.c',
+ ), if_false: files('qemu-fsdev-dummy.c'))
+-if host_os in ['linux', 'darwin']
++if host_os in ['linux', 'darwin', 'cosmopolitan']
+   system_ss.add_all(fsdev_ss)
+ endif
+diff --git a/hw/9pfs/9p-local.c b/hw/9pfs/9p-local.c
+index 1b1f3b9..dc7ba48 100644
+--- a/hw/9pfs/9p-local.c
++++ b/hw/9pfs/9p-local.c
+@@ -593,7 +593,7 @@ static ssize_t local_preadv(FsContext *ctx, V9fsFidOpenState *fs,
+                             int iovcnt, off_t offset)
+ {
+ #ifdef CONFIG_PREADV
+-    return preadv(fs->fd, iov, iovcnt, offset);
++    return preadv(fs->fd, (struct iovec *)iov, iovcnt, offset);
+ #else
+     int err = lseek(fs->fd, offset, SEEK_SET);
+     if (err == -1) {
+@@ -610,7 +610,7 @@ static ssize_t local_pwritev(FsContext *ctx, V9fsFidOpenState *fs,
+ {
+     ssize_t ret;
+ #ifdef CONFIG_PREADV
+-    ret = pwritev(fs->fd, iov, iovcnt, offset);
++    ret = pwritev(fs->fd, (struct iovec *)iov, iovcnt, offset);
+ #else
+     int err = lseek(fs->fd, offset, SEEK_SET);
+     if (err == -1) {
+@@ -1510,6 +1510,15 @@ static int local_parse_opts(QemuOpts *opts, FsDriverEntry *fse, Error **errp)
+         fse->export_flags |= V9FS_SM_PASSTHROUGH;
+     } else if (!strcmp(sec_model, "mapped") ||
+                !strcmp(sec_model, "mapped-xattr")) {
++#ifdef __COSMOPOLITAN__
++        if (!IsLinux()) {
++            error_setg(errp, "security_model '%s' needs extended attributes, "
++                       "which are only available on Linux hosts", sec_model);
++            error_append_hint(errp, "Use security_model=mapped-file or none "
++                              "on this host\n");
++            return -1;
++        }
++#endif
+         fse->export_flags |= V9FS_SM_MAPPED;
+     } else if (!strcmp(sec_model, "none")) {
+         fse->export_flags |= V9FS_SM_NONE;
+diff --git a/hw/9pfs/9p-util-cosmo.c b/hw/9pfs/9p-util-cosmo.c
+new file mode 100644
+index 0000000..fd04ab6
+--- /dev/null
++++ b/hw/9pfs/9p-util-cosmo.c
+@@ -0,0 +1,191 @@
++/*
++ * 9p utilities (Cosmopolitan implementation)
++ *
++ * The same binary runs on Linux, macOS and Windows, so everything that
++ * differs between hosts is decided at run time.  Only Linux has the extended
++ * attributes that the "mapped-xattr" security model and the guest's xattr
++ * calls need (reached with raw system calls); the "mapped-file" and "none"
++ * models need nothing beyond POSIX file calls and work on every host.
++ *
++ * This work is licensed under the terms of the GNU GPL, version 2 or later.
++ * See the COPYING file in the top-level directory.
++ */
++
++#include "qemu/osdep.h"
++#include "qemu/cosmo-linux-syscall.h"
++#include "9p-util.h"
++
++#include <cosmo.h>
++#include <libc/sysv/consts/nr.h>
++
++/*
++ * errno values are run-time values: the same as Linux's on Linux, different on
++ * macOS and Windows.  The guest is always Linux, so translate.
++ */
++int cosmo_errno_to_dotl(int err)
++{
++    int i;
++    const struct {
++        int linux_errno;
++        int host_errno;
++    } map[] = {
++        { 1, EPERM }, { 2, ENOENT }, { 3, ESRCH }, { 4, EINTR },
++        { 5, EIO }, { 6, ENXIO }, { 7, E2BIG }, { 8, ENOEXEC },
++        { 9, EBADF }, { 10, ECHILD }, { 11, EAGAIN }, { 12, ENOMEM },
++        { 13, EACCES }, { 14, EFAULT }, { 16, EBUSY }, { 17, EEXIST },
++        { 18, EXDEV }, { 19, ENODEV }, { 20, ENOTDIR }, { 21, EISDIR },
++        { 22, EINVAL }, { 23, ENFILE }, { 24, EMFILE }, { 25, ENOTTY },
++        { 26, ETXTBSY }, { 27, EFBIG }, { 28, ENOSPC }, { 29, ESPIPE },
++        { 30, EROFS }, { 31, EMLINK }, { 32, EPIPE }, { 33, EDOM },
++        { 34, ERANGE }, { 35, EDEADLK }, { 36, ENAMETOOLONG },
++        { 37, ENOLCK }, { 38, ENOSYS }, { 39, ENOTEMPTY }, { 40, ELOOP },
++        { 61, ENODATA }, { 75, EOVERFLOW }, { 84, EILSEQ },
++        { 95, ENOTSUP }, { 95, EOPNOTSUPP }, { 116, ESTALE },
++        { 122, EDQUOT },
++    };
++
++    if (IsLinux()) {
++        return err;
++    }
++    for (i = 0; i < ARRAY_SIZE(map); i++) {
++        /* an errno the host lacks is 0 or all ones */
++        if (map[i].host_errno > 0 && err == map[i].host_errno) {
++            return map[i].linux_errno;
++        }
++    }
++    return err;
++}
++
++/*
++ * Extended attributes: Linux system calls on the "/proc/self/fd/<dirfd>/name"
++ * path (the l* variants do not follow a final symlink).  Other hosts get
++ * ENOTSUP; the callers turn that into a failed guest xattr call.
++ */
++static ssize_t cosmo_lgetxattr(const char *path, const char *name,
++                               void *value, size_t size)
++{
++    return cosmo_linux_syscall5(__NR_lgetxattr, (long)path, (long)name,
++                                (long)value, (long)size, 0);
++}
++
++static ssize_t cosmo_llistxattr(const char *path, char *list, size_t size)
++{
++    return cosmo_linux_syscall3(__NR_llistxattr, (long)path, (long)list,
++                                (long)size);
++}
++
++static int cosmo_lremovexattr(const char *path, const char *name)
++{
++    return cosmo_linux_syscall3(__NR_lremovexattr, (long)path, (long)name, 0);
++}
++
++static int cosmo_lsetxattr(const char *path, const char *name,
++                           const void *value, size_t size, int flags)
++{
++    return cosmo_linux_syscall5(__NR_lsetxattr, (long)path, (long)name,
++                                (long)value, (long)size, flags);
++}
++
++static char *proc_fd_path(int dirfd, const char *filename)
++{
++    return g_strdup_printf("/proc/self/fd/%d/%s", dirfd, filename);
++}
++
++ssize_t cosmo_fgetxattr(int fd, const char *name, void *value, size_t size)
++{
++    if (!IsLinux()) {
++        errno = ENOTSUP;
++        return -1;
++    }
++    return cosmo_linux_syscall5(__NR_fgetxattr, fd, (long)name, (long)value,
++                                (long)size, 0);
++}
++
++ssize_t fgetxattrat_nofollow(int dirfd, const char *filename, const char *name,
++                             void *value, size_t size)
++{
++    char *proc_path;
++    ssize_t ret;
++
++    if (!IsLinux()) {
++        errno = ENOTSUP;
++        return -1;
++    }
++    proc_path = proc_fd_path(dirfd, filename);
++    ret = cosmo_lgetxattr(proc_path, name, value, size);
++    g_free(proc_path);
++    return ret;
++}
++
++ssize_t flistxattrat_nofollow(int dirfd, const char *filename,
++                              char *list, size_t size)
++{
++    char *proc_path;
++    ssize_t ret;
++
++    if (!IsLinux()) {
++        errno = ENOTSUP;
++        return -1;
++    }
++    proc_path = proc_fd_path(dirfd, filename);
++    ret = cosmo_llistxattr(proc_path, list, size);
++    g_free(proc_path);
++    return ret;
++}
++
++ssize_t fremovexattrat_nofollow(int dirfd, const char *filename,
++                                const char *name)
++{
++    char *proc_path;
++    ssize_t ret;
++
++    if (!IsLinux()) {
++        errno = ENOTSUP;
++        return -1;
++    }
++    proc_path = proc_fd_path(dirfd, filename);
++    ret = cosmo_lremovexattr(proc_path, name);
++    g_free(proc_path);
++    return ret;
++}
++
++int fsetxattrat_nofollow(int dirfd, const char *filename, const char *name,
++                         void *value, size_t size, int flags)
++{
++    char *proc_path;
++    int ret;
++
++    if (!IsLinux()) {
++        errno = ENOTSUP;
++        return -1;
++    }
++    proc_path = proc_fd_path(dirfd, filename);
++    ret = cosmo_lsetxattr(proc_path, name, value, size, flags);
++    g_free(proc_path);
++    return ret;
++}
++
++/*
++ * mknodat() exists as a system call on Linux only.  Elsewhere regular files
++ * can still be created (which is all the mapped security models ask for) and
++ * everything else, such as device nodes, is not supported.
++ */
++int qemu_mknodat(int dirfd, const char *filename, mode_t mode, dev_t dev)
++{
++    int fd;
++
++    if (IsLinux()) {
++        return cosmo_linux_syscall5(__NR_mknodat, dirfd, (long)filename,
++                                    mode, dev, 0);
++    }
++    if (!S_ISREG(mode) && (mode & S_IFMT) != 0) {
++        errno = ENOTSUP;
++        return -1;
++    }
++    fd = qemu_openat(dirfd, filename, O_CREAT | O_EXCL | O_WRONLY, mode & 07777);
++    if (fd < 0) {
++        return -1;
++    }
++    close(fd);
++    return 0;
++}
+diff --git a/hw/9pfs/9p-util.h b/hw/9pfs/9p-util.h
+index 51c94b0..321ca86 100644
+--- a/hw/9pfs/9p-util.h
++++ b/hw/9pfs/9p-util.h
+@@ -14,6 +14,9 @@
+ #define QEMU_9P_UTIL_H
+ 
+ #include "qemu/error-report.h"
++#ifdef __COSMOPOLITAN__
++#include <cosmo.h>
++#endif
+ 
+ #ifdef O_PATH
+ #define O_PATH_9P_UTIL O_PATH
+@@ -21,6 +24,21 @@
+ #define O_PATH_9P_UTIL 0
+ #endif
+ 
++#ifdef __COSMOPOLITAN__
++/*
++ * Cosmopolitan's O_* flags are run-time values, and a flag the host OS does
++ * not have is 0 or all ones (O_NOFOLLOW, O_NOATIME and others on Windows).
++ * Map a missing flag to 0 so it can be OR-ed in and masked out safely.
++ */
++static inline int host_oflag(unsigned flag)
++{
++    return (flag == (unsigned)-1) ? 0 : (int)flag;
++}
++#define HOST_O(flag) host_oflag(flag)
++#else
++#define HOST_O(flag) (flag)
++#endif
++
+ #if !defined(CONFIG_LINUX)
+ 
+ /*
+@@ -55,11 +73,22 @@ static inline uint64_t host_dev_to_dotl_dev(dev_t dev)
+ {
+ #ifdef CONFIG_LINUX
+     return dev;
++#elif defined(__COSMOPOLITAN__)
++    return IsLinux() ? dev : makedev_dotl(major(dev), minor(dev));
+ #else
+     return makedev_dotl(major(dev), minor(dev));
+ #endif
+ }
+ 
++#ifdef __COSMOPOLITAN__
++/*
++ * errno values are run-time values under Cosmopolitan: identical to Linux's
++ * on Linux, different on macOS and Windows (9p-util-cosmo.c).
++ */
++int cosmo_errno_to_dotl(int err);
++ssize_t cosmo_fgetxattr(int fd, const char *name, void *value, size_t size);
++#endif
++
+ /* Translates errno from host -> Linux if needed */
+ static inline int errno_to_dotl(int err) {
+ #if defined(CONFIG_LINUX)
+@@ -84,6 +113,8 @@ static inline int errno_to_dotl(int err) {
+     } else if (err == EOPNOTSUPP) {
+         err = 95; /* ==EOPNOTSUPP on Linux */
+     }
++#elif defined(__COSMOPOLITAN__)
++    err = cosmo_errno_to_dotl(err);
+ #else
+ #error Missing errno translation to Linux for this host system
+ #endif
+@@ -92,6 +123,8 @@ static inline int errno_to_dotl(int err) {
+ 
+ #ifdef CONFIG_DARWIN
+ #define qemu_fgetxattr(...) fgetxattr(__VA_ARGS__, 0, 0)
++#elif defined(__COSMOPOLITAN__)
++#define qemu_fgetxattr cosmo_fgetxattr
+ #else
+ #define qemu_fgetxattr fgetxattr
+ #endif
+@@ -146,7 +179,8 @@ static inline int close_if_special_file(int fd)
+ static inline int openat_dir(int dirfd, const char *name)
+ {
+     return qemu_openat(dirfd, name,
+-                       O_DIRECTORY | O_RDONLY | O_NOFOLLOW | O_PATH_9P_UTIL);
++                       HOST_O(O_DIRECTORY) | O_RDONLY | HOST_O(O_NOFOLLOW) |
++                       O_PATH_9P_UTIL);
+ }
+ 
+ static inline int openat_file(int dirfd, const char *name, int flags,
+@@ -157,11 +191,12 @@ static inline int openat_file(int dirfd, const char *name, int flags,
+ #ifndef CONFIG_DARWIN
+ again:
+ #endif
+-    fd = qemu_openat(dirfd, name, flags | O_NOFOLLOW | O_NOCTTY | O_NONBLOCK,
+-                     mode);
++    fd = qemu_openat(dirfd, name,
++                     flags | HOST_O(O_NOFOLLOW) | HOST_O(O_NOCTTY) |
++                     HOST_O(O_NONBLOCK), mode);
+     if (fd == -1) {
+ #ifndef CONFIG_DARWIN
+-        if (errno == EPERM && (flags & O_NOATIME)) {
++        if (errno == EPERM && (flags & HOST_O(O_NOATIME))) {
+             /*
+              * The client passed O_NOATIME but we lack permissions to honor it.
+              * Rather than failing the open, fall back without O_NOATIME. This
+@@ -170,7 +205,7 @@ again:
+              * all filesystems". In particular, NFS and other network
+              * filesystems ignore it entirely.
+              */
+-            flags &= ~O_NOATIME;
++            flags &= ~HOST_O(O_NOATIME);
+             goto again;
+         }
+ #endif
+diff --git a/hw/9pfs/9p.c b/hw/9pfs/9p.c
+index 5785177..7687f24 100644
+--- a/hw/9pfs/9p.c
++++ b/hw/9pfs/9p.c
+@@ -128,16 +128,16 @@ static int dotl_to_open_flags(int flags)
+     int oflags = flags & O_ACCMODE;
+ 
+     DotlOpenflagMap dotl_oflag_map[] = {
+-        { P9_DOTL_CREATE, O_CREAT },
+-        { P9_DOTL_EXCL, O_EXCL },
+-        { P9_DOTL_NOCTTY , O_NOCTTY },
++        { P9_DOTL_CREATE, HOST_O(O_CREAT) },
++        { P9_DOTL_EXCL, HOST_O(O_EXCL) },
++        { P9_DOTL_NOCTTY , HOST_O(O_NOCTTY) },
+         { P9_DOTL_TRUNC, O_TRUNC },
+         { P9_DOTL_APPEND, O_APPEND },
+-        { P9_DOTL_NONBLOCK, O_NONBLOCK } ,
+-        { P9_DOTL_DSYNC, O_DSYNC },
+-        { P9_DOTL_FASYNC, FASYNC },
++        { P9_DOTL_NONBLOCK, HOST_O(O_NONBLOCK) } ,
++        { P9_DOTL_DSYNC, HOST_O(O_DSYNC) },
++        { P9_DOTL_FASYNC, HOST_O(O_ASYNC) },
+ #ifndef CONFIG_DARWIN
+-        { P9_DOTL_NOATIME, O_NOATIME },
++        { P9_DOTL_NOATIME, HOST_O(O_NOATIME) },
+         /*
+          *  On Darwin, we could map to F_NOCACHE, which is
+          *  similar, but doesn't quite have the same
+@@ -145,12 +145,12 @@ static int dotl_to_open_flags(int flags)
+          *  even on linux at the moment, so we just ignore
+          *  it here.
+          */
+-        { P9_DOTL_DIRECT, O_DIRECT },
++        { P9_DOTL_DIRECT, HOST_O(O_DIRECT) },
+ #endif
+-        { P9_DOTL_LARGEFILE, O_LARGEFILE },
+-        { P9_DOTL_DIRECTORY, O_DIRECTORY },
+-        { P9_DOTL_NOFOLLOW, O_NOFOLLOW },
+-        { P9_DOTL_SYNC, O_SYNC },
++        { P9_DOTL_LARGEFILE, HOST_O(O_LARGEFILE) },
++        { P9_DOTL_DIRECTORY, HOST_O(O_DIRECTORY) },
++        { P9_DOTL_NOFOLLOW, HOST_O(O_NOFOLLOW) },
++        { P9_DOTL_SYNC, HOST_O(O_SYNC) },
+     };
+ 
+     for (i = 0; i < ARRAY_SIZE(dotl_oflag_map); i++) {
+@@ -177,12 +177,12 @@ static int get_dotl_openflags(V9fsState *s, int oflags)
+      * Filter the client open flags
+      */
+     flags = dotl_to_open_flags(oflags);
+-    flags &= ~(O_NOCTTY | O_ASYNC | O_CREAT);
++    flags &= ~(HOST_O(O_NOCTTY) | HOST_O(O_ASYNC) | HOST_O(O_CREAT));
+ #ifndef CONFIG_DARWIN
+     /*
+      * Ignore direct disk access hint until the server supports it.
+      */
+-    flags &= ~O_DIRECT;
++    flags &= ~HOST_O(O_DIRECT);
+ #endif
+     return flags;
+ }
+@@ -3969,9 +3969,9 @@ out_nofid:
+ #if defined(CONFIG_LINUX)
+ /* Currently, only Linux has XATTR_SIZE_MAX */
+ #define P9_XATTR_SIZE_MAX XATTR_SIZE_MAX
+-#elif defined(CONFIG_DARWIN)
++#elif defined(CONFIG_DARWIN) || defined(__COSMOPOLITAN__)
+ /*
+- * Darwin doesn't seem to define a maximum xattr size in its user
++ * Darwin (and Cosmopolitan) don't seem to define a maximum xattr size in its user
+  * space header, so manually configure it across platforms as 64k.
+  *
+  * Having no limit at all can lead to QEMU crashing during large g_malloc()
+diff --git a/hw/9pfs/meson.build b/hw/9pfs/meson.build
+index eceffdb..29e44f4 100644
+--- a/hw/9pfs/meson.build
++++ b/hw/9pfs/meson.build
+@@ -16,6 +16,8 @@ if host_os == 'darwin'
+   fs_ss.add(files('9p-util-darwin.c'))
+ elif host_os == 'linux'
+   fs_ss.add(files('9p-util-linux.c'))
++elif host_os == 'cosmopolitan'
++  fs_ss.add(files('9p-util-cosmo.c'))
+ endif
+ fs_ss.add(when: 'CONFIG_XEN_BUS', if_true: files('xen-9p-backend.c'))
+ system_ss.add_all(when: 'CONFIG_FSDEV_9P', if_true: fs_ss)
+diff --git a/include/qemu/cosmo-linux-syscall.h b/include/qemu/cosmo-linux-syscall.h
+index 0cb6af9..0124591 100644
+--- a/include/qemu/cosmo-linux-syscall.h
++++ b/include/qemu/cosmo-linux-syscall.h
+@@ -18,7 +18,8 @@
+ #include <errno.h>
+ 
+ /* Returns the (non-negative) result, or -1 with errno set. */
+-static inline long cosmo_linux_syscall3(long nr, long a, long b, long c)
++static inline long cosmo_linux_syscall5(long nr, long a, long b, long c,
++                                        long d, long e)
+ {
+     long ret;
+ 
+@@ -27,16 +28,23 @@ static inline long cosmo_linux_syscall3(long nr, long a, long b, long c)
+         return -1;
+     }
+ #if defined(__x86_64__)
++    register long r10 __asm__("r10") = d;
++    register long r8 __asm__("r8") = e;
+     __asm__ volatile("syscall"
+                      : "=a"(ret)
+-                     : "a"(nr), "D"(a), "S"(b), "d"(c)
++                     : "a"(nr), "D"(a), "S"(b), "d"(c), "r"(r10), "r"(r8)
+                      : "rcx", "r11", "memory");
+ #elif defined(__aarch64__)
+     register long x8 __asm__("x8") = nr;
+     register long x0 __asm__("x0") = a;
+     register long x1 __asm__("x1") = b;
+     register long x2 __asm__("x2") = c;
+-    __asm__ volatile("svc #0" : "+r"(x0) : "r"(x8), "r"(x1), "r"(x2) : "memory");
++    register long x3 __asm__("x3") = d;
++    register long x4 __asm__("x4") = e;
++    __asm__ volatile("svc #0"
++                     : "+r"(x0)
++                     : "r"(x8), "r"(x1), "r"(x2), "r"(x3), "r"(x4)
++                     : "memory");
+     ret = x0;
+ #else
+     errno = ENOSYS;
+@@ -49,6 +57,11 @@ static inline long cosmo_linux_syscall3(long nr, long a, long b, long c)
+     return ret;
+ }
+ 
++static inline long cosmo_linux_syscall3(long nr, long a, long b, long c)
++{
++    return cosmo_linux_syscall5(nr, a, b, c, 0, 0);
++}
++
+ #endif /* __COSMOPOLITAN__ */
+ 
+ #endif /* QEMU_COSMO_LINUX_SYSCALL_H */
+diff --git a/include/qemu/xattr.h b/include/qemu/xattr.h
+index b08a934..db6ab26 100644
+--- a/include/qemu/xattr.h
++++ b/include/qemu/xattr.h
+@@ -25,9 +25,16 @@
+ #  if !defined(ENOATTR)
+ #    define ENOATTR ENODATA
+ #  endif
+-#  ifndef CONFIG_WIN32
++#  if !defined(CONFIG_WIN32) && !defined(__COSMOPOLITAN__)
+ #    include <sys/xattr.h>
+ #  endif
++#  ifdef __COSMOPOLITAN__
++/* extended attributes are Linux system calls here (hw/9pfs/9p-util-cosmo.c) */
++#    ifndef XATTR_CREATE
++#      define XATTR_CREATE 1
++#      define XATTR_REPLACE 2
++#    endif
++#  endif
+ #endif
+ 
+ #endif
+diff --git a/meson.build b/meson.build
+index fdf49f1..5f54d6f 100644
+--- a/meson.build
++++ b/meson.build
+@@ -2328,11 +2328,11 @@ dbus_display = get_option('dbus_display') \
+   .allowed()
+ 
+ have_virtfs = get_option('virtfs') \
+-    .require(host_os == 'linux' or host_os == 'darwin',
+-             error_message: 'virtio-9p (virtfs) requires Linux or macOS') \
+-    .require(host_os == 'linux' or cc.has_function('pthread_fchdir_np'),
++    .require(host_os in ['linux', 'darwin', 'cosmopolitan'],
++             error_message: 'virtio-9p (virtfs) requires Linux, macOS or Cosmopolitan') \
++    .require(host_os in ['linux', 'cosmopolitan'] or cc.has_function('pthread_fchdir_np'),
+              error_message: 'virtio-9p (virtfs) on macOS requires the presence of pthread_fchdir_np') \
+-    .require(host_os == 'darwin' or libattr.found(),
++    .require(host_os in ['darwin', 'cosmopolitan'] or libattr.found(),
+              error_message: 'virtio-9p (virtfs) on Linux requires libattr-devel') \
+     .disable_auto_if(not have_tools and not have_system) \
+     .allowed()
