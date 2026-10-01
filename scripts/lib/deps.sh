@@ -31,9 +31,10 @@ build_deps() {
     mkdir -p "${B}/pcre2" && cd "${B}/pcre2"
     run_logged "${arch}-pcre2" bash -c "'${SRC_DIR}/pcre2-${PCRE2_VERSION}/configure' --prefix='${S}' --host=${host_triplet} --disable-shared --enable-static && make -j${JOBS} && make install"
 
-    # zstd (only the library; it builds in the source tree, so use a copy)
+    # zstd (only the library; it builds in the source tree, so use a copy).
+    # Its BMI2 assembly is left out: cosmocc rejects the (empty) object file.
     mkdir -p "${B}/zstd" && cp -r "${SRC_DIR}/zstd-${ZSTD_VERSION}/." "${B}/zstd"
-    run_logged "${arch}-zstd" bash -c "cd '${B}/zstd/lib' && make -j${JOBS} CC='${cc}' AR='${ar}' PREFIX='${S}' libzstd.a libzstd.pc && make PREFIX='${S}' install-static install-pc install-includes"
+    run_logged "${arch}-zstd" bash -c "cd '${B}/zstd/lib' && make -j${JOBS} ZSTD_NO_ASM=1 CC='${cc}' AR='${ar}' PREFIX='${S}' libzstd.a libzstd.pc && make ZSTD_NO_ASM=1 CC='${cc}' AR='${ar}' PREFIX='${S}' install-static install-pc install-includes"
 
     # libffi (static trampolines need a raw mmap of the exec file, unsupported here)
     # The Ubuntu orig tarball has no configure script, so generate it (in a copy,
