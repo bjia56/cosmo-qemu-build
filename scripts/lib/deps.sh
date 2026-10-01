@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # SPDX-License-Identifier: MIT
-# Static dependencies (zlib, pcre2, libffi, glib, pixman) built into a per-architecture sysroot.
+# Static dependencies (zlib, pcre2, libffi, glib, pixman, libslirp) built into a per-architecture sysroot.
 # Sourced by scripts/build.sh; relies on the variables it defines.
 
 exe_wrapper_for() {
@@ -97,6 +97,11 @@ EOF
             -Dtests=disabled -Ddemos=disabled -Dgtk=disabled -Dlibpng=disabled \
             -Dopenmp=disabled -Dtimers=false -Dgnuplot=false
         run_logged "${arch}-pixman-build" ninja -C "${B}/pixman" -j"${JOBS}" install
+        # libslirp (user-mode networking, -netdev user); needs only glib
+        run_logged "${arch}-libslirp-configure" env PKG_CONFIG_LIBDIR="${S}/lib/pkgconfig" \
+            meson setup "${B}/libslirp" "${SRC_DIR}/libslirp-v${LIBSLIRP_VERSION}" --cross-file "${cross}" \
+            --prefix="${S}" --default-library=static --wrap-mode=nodownload
+        run_logged "${arch}-libslirp-build" ninja -C "${B}/libslirp" -j"${JOBS}" install
         stage_kernel_headers "${arch}" "${S}"
         # WHPX only exists for x86_64 guests on x86_64 (Windows) hosts
         if [ "${arch}" = "x86_64" ] && [[ " ${SYSTEM_TARGETS} " == *" x86_64 "* ]]; then

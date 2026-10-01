@@ -116,6 +116,11 @@ PIXMAN_URLS=(
 )
 PIXMAN_SHA256="89a4c1e1e45e0b23dffe708202cb2eaffde0fe3727d7692b2e1739fec78a7dac"
 
+# libslirp (user-mode networking); the tarball unpacks to libslirp-v<version>
+LIBSLIRP_VERSION="4.9.1"
+LIBSLIRP_URLS=("https://archive.ubuntu.com/ubuntu/pool/main/libs/libslirp/libslirp_${LIBSLIRP_VERSION}.orig.tar.bz2")
+LIBSLIRP_SHA256="3caff6e2de445f4995629d4929c55419f661b2b1d14f12481e155a71c1e8f811"
+
 # Cosmopolitan Libc's license, for the notices (the libc is linked into every executable)
 COSMOPOLITAN_VERSION="4.0.2"
 COSMOPOLITAN_LICENSE_URL="https://raw.githubusercontent.com/jart/cosmopolitan/${COSMOPOLITAN_VERSION}/LICENSE"
@@ -191,11 +196,13 @@ download "${ZLIB_SHA256}" "zlib-${ZLIB_VERSION}.tar.gz" "${ZLIB_URLS[@]}"
 download "${PCRE2_SHA256}" "pcre2-${PCRE2_VERSION}.tar.bz2" "${PCRE2_URLS[@]}"
 download "${LIBFFI_SHA256}" "libffi-${LIBFFI_VERSION}.tar.gz" "${LIBFFI_URLS[@]}"
 download "${PIXMAN_SHA256}" "pixman-${PIXMAN_VERSION}.tar.gz" "${PIXMAN_URLS[@]}"
+download "${LIBSLIRP_SHA256}" "libslirp-${LIBSLIRP_VERSION}.tar.bz2" "${LIBSLIRP_URLS[@]}"
 download "${COSMOPOLITAN_LICENSE_SHA256}" "cosmopolitan-LICENSE" "${COSMOPOLITAN_LICENSE_URL}"
 tar -xf "${DL_DIR}/zlib-${ZLIB_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/pcre2-${PCRE2_VERSION}.tar.bz2" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/libffi-${LIBFFI_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/pixman-${PIXMAN_VERSION}.tar.gz" -C "${SRC_DIR}"
+tar -xf "${DL_DIR}/libslirp-${LIBSLIRP_VERSION}.tar.bz2" -C "${SRC_DIR}"
 
 # Fail early for a QEMU version that has no patches
 [ -d "${PROJECT_ROOT}/patches/qemu/${QEMU_VERSION}" ] \

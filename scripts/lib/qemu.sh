@@ -43,9 +43,9 @@ build_qemu() {
             hvf_flag="--enable-hvf"
             extra_cflags="${extra_cflags} -I${S}/include/hvf"
         fi
-        system_flags=(--target-list="${targets%,}" ${kvm_flag} ${whpx_flag} ${hvf_flag})
+        system_flags=(--target-list="${targets%,}" --enable-slirp ${kvm_flag} ${whpx_flag} ${hvf_flag})
     else
-        system_flags=(--disable-system)
+        system_flags=(--disable-system --disable-slirp)
     fi
 
     # Notes on the flags:
@@ -74,7 +74,7 @@ build_qemu() {
         --disable-curl --disable-gnutls --disable-nettle --disable-gcrypt \
         --disable-zstd --disable-bzip2 --disable-fuse \
         --disable-seccomp --disable-attr --disable-libnfs --disable-libssh \
-        --disable-rbd --disable-glusterfs --disable-capstone --disable-slirp
+        --disable-rbd --disable-glusterfs --disable-capstone
 
     # A later meson.build change makes ninja regenerate the build; without
     # this, the regenerated build would pick up host libraries.

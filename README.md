@@ -33,7 +33,7 @@ entitlement on first use, so HVF works without any setup. See [`patches/README.m
 
 Not included: network block drivers (curl, ssh, nfs, rbd, gluster), encryption backed by
 gnutls/nettle/gcrypt, zstd and bzip2 compression, Linux-specific I/O (io_uring, linux-aio), 9p/virtfs,
-graphics front ends (SDL, GTK, ...), vhost and user-mode networking (slirp).
+graphics front ends (SDL, GTK, ...), and vhost.
 
 ## Getting the binaries
 
@@ -82,7 +82,7 @@ The executables are built from [QEMU](https://www.qemu.org/), which is licensed 
 [COPYING](https://gitlab.com/qemu-project/qemu/-/blob/master/COPYING). They statically link
 [Cosmopolitan Libc](https://github.com/jart/cosmopolitan) (ISC, with the notices of the third-party code it
 bundles embedded in the executables), glib and proxy-libintl (LGPL-2.1+), pcre2 (BSD), libffi (MIT), zlib
-(zlib) and pixman (MIT). `COPYING` and `THIRD_PARTY_NOTICES.txt`, with all of their license texts, are
+(zlib), pixman (MIT) and libslirp (BSD-3-Clause). `COPYING` and `THIRD_PARTY_NOTICES.txt`, with all of their license texts, are
 embedded in each executable.
 
 The corresponding source for an executable is the QEMU tag it was built from (`QEMU_VERSION` in

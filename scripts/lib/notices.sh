@@ -18,7 +18,8 @@ write_notices() {
             "pcre2 ${PCRE2_VERSION}|${SRC_DIR}/pcre2-${PCRE2_VERSION}/LICENCE.md" \
             "libffi ${LIBFFI_VERSION}|${SRC_DIR}/libffi-${LIBFFI_VERSION}/LICENSE" \
             "zlib ${ZLIB_VERSION}|${SRC_DIR}/zlib-${ZLIB_VERSION}/LICENSE" \
-            "pixman ${PIXMAN_VERSION}|${SRC_DIR}/pixman-${PIXMAN_VERSION}/COPYING"; do
+            "pixman ${PIXMAN_VERSION}|${SRC_DIR}/pixman-${PIXMAN_VERSION}/COPYING" \
+            "libslirp ${LIBSLIRP_VERSION}|${SRC_DIR}/libslirp-v${LIBSLIRP_VERSION}/COPYRIGHT"; do
             name="${entry%%|*}"; file="${entry#*|}"
             echo ""
             echo "================================================================"
