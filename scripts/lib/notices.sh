@@ -16,6 +16,7 @@ write_notices() {
             "glib ${GLIB_VERSION}|${SRC_DIR}/glib/COPYING" \
             "proxy-libintl ${PROXY_LIBINTL_VERSION}|${SRC_DIR}/glib/subprojects/proxy-libintl/COPYING" \
             "pcre2 ${PCRE2_VERSION}|${SRC_DIR}/pcre2-${PCRE2_VERSION}/LICENCE.md" \
+            "bzip2 ${BZIP2_VERSION}|${SRC_DIR}/bzip2-${BZIP2_VERSION}/LICENSE" \
             "zstd ${ZSTD_VERSION}|${SRC_DIR}/zstd-${ZSTD_VERSION}/LICENSE" \
             "libffi ${LIBFFI_VERSION}|${SRC_DIR}/libffi-${LIBFFI_VERSION}/LICENSE" \
             "zlib ${ZLIB_VERSION}|${SRC_DIR}/zlib-${ZLIB_VERSION}/LICENSE" \

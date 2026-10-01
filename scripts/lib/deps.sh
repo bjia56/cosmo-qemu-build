@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # SPDX-License-Identifier: MIT
-# Static dependencies (zlib, pcre2, zstd, libffi, glib, pixman, libslirp) built into a per-architecture sysroot.
+# Static dependencies (zlib, pcre2, bzip2, zstd, libffi, glib, pixman, libslirp) built into a per-architecture sysroot.
 # Sourced by scripts/build.sh; relies on the variables it defines.
 
 exe_wrapper_for() {
@@ -30,6 +30,10 @@ build_deps() {
     # pcre2
     mkdir -p "${B}/pcre2" && cd "${B}/pcre2"
     run_logged "${arch}-pcre2" bash -c "'${SRC_DIR}/pcre2-${PCRE2_VERSION}/configure' --prefix='${S}' --host=${host_triplet} --disable-shared --enable-static && make -j${JOBS} && make install"
+
+    # bzip2 (only the library; it builds in the source tree, so use a copy)
+    mkdir -p "${B}/bzip2" "${S}/include" "${S}/lib" && cp -r "${SRC_DIR}/bzip2-${BZIP2_VERSION}/." "${B}/bzip2"
+    run_logged "${arch}-bzip2" bash -c "cd '${B}/bzip2' && make -j${JOBS} CC='${cc}' AR='${ar}' RANLIB='${ranlib}' libbz2.a && cp bzlib.h '${S}/include/' && cp libbz2.a '${S}/lib/'"
 
     # zstd (only the library; it builds in the source tree, so use a copy).
     # Its BMI2 assembly is left out: cosmocc rejects the (empty) object file.
