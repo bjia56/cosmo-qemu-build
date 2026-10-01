@@ -32,7 +32,7 @@ program). The executables use their own loader, `.q.ape-01` in `${TMPDIR:-$HOME}
 entitlement on first use, so HVF works without any setup. See [`patches/README.md`](patches/README.md).
 
 Not included: network block drivers (curl, ssh, nfs, rbd, gluster), encryption backed by
-gnutls/nettle/gcrypt, zstd and bzip2 compression, Linux-specific I/O (io_uring, linux-aio), 9p/virtfs,
+gnutls/nettle/gcrypt, bzip2 compression, Linux-specific I/O (io_uring, linux-aio), 9p/virtfs,
 graphics front ends (SDL, GTK, ...), and vhost.
 
 ## Getting the binaries
@@ -57,7 +57,7 @@ release), plus `git`, `curl`, `tar`, `sed`, `make`, `patch`, `zip`, `bzip2`, `ni
 ./scripts/smoke_test_aarch64.sh out      # the aarch64 halves, under qemu-user
 ```
 
-`scripts/build.sh` runs the smoke tests for the x86_64 halves itself. It compiles zlib, pcre2, libffi,
+`scripts/build.sh` runs the smoke tests for the x86_64 halves itself. It compiles zlib, pcre2, zstd, libffi,
 glib and pixman for each architecture into a static sysroot, then builds QEMU from a tagged release and
 links both architectures into one file per program with `apelink`. The Cosmopolitan-specific changes to
 glib and QEMU are in [`patches/`](patches), and [`compat/`](compat) holds the header shims and the macOS
@@ -81,7 +81,7 @@ and are not stored in this repository.
 The executables are built from [QEMU](https://www.qemu.org/), which is licensed under the GPL-2.0, see
 [COPYING](https://gitlab.com/qemu-project/qemu/-/blob/master/COPYING). They statically link
 [Cosmopolitan Libc](https://github.com/jart/cosmopolitan) (ISC, with the notices of the third-party code it
-bundles embedded in the executables), glib and proxy-libintl (LGPL-2.1+), pcre2 (BSD), libffi (MIT), zlib
+bundles embedded in the executables), glib and proxy-libintl (LGPL-2.1+), pcre2 (BSD), zstd (BSD-3-Clause), libffi (MIT), zlib
 (zlib), pixman (MIT) and libslirp (BSD-3-Clause). `COPYING` and `THIRD_PARTY_NOTICES.txt`, with all of their license texts, are
 embedded in each executable.
 

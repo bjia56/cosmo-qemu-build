@@ -61,6 +61,12 @@ q convert -c -f raw -O qcow2 a.raw cz.qcow2
 q check cz.qcow2 >/dev/null
 pass "compressed convert"
 
+q convert -c -f raw -O qcow2 -o compression_type=zstd a.raw zs.qcow2
+q info zs.qcow2 | grep -q 'compression type: zstd'
+q convert -f qcow2 -O raw zs.qcow2 zs.raw
+cmp a.raw zs.raw
+pass "zstd compressed qcow2 round trip"
+
 q snapshot -c s1 c.qcow2
 q snapshot -l c.qcow2 | grep -q s1
 pass "snapshot"

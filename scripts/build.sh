@@ -116,6 +116,11 @@ LIBFFI_VERSION="3.8.0"
 LIBFFI_URL="${UBUNTU_POOL}/libf/libffi/libffi_${LIBFFI_VERSION}.orig.tar.gz"
 LIBFFI_SHA256="bf40d752d8f5fd4505bcd1c7d4208ea87fd12c91f087e359651c776748352dc0"
 
+# Ubuntu's source package for zstd is libzstd; the tarball unpacks to zstd-<version>
+ZSTD_VERSION="1.5.7"
+ZSTD_URL="${UBUNTU_POOL}/libz/libzstd/libzstd_${ZSTD_VERSION}+dfsg.orig.tar.xz"
+ZSTD_SHA256="0c092ef267edce57ba7f3f2645c861f72eaf5e76273c6c3632869423464b90a5"
+
 PIXMAN_VERSION="0.46.4"
 PIXMAN_URL="${UBUNTU_POOL}/p/pixman/pixman_${PIXMAN_VERSION}.orig.tar.gz"
 PIXMAN_SHA256="d09c44ebc3bd5bee7021c79f922fe8fb2fb57f7320f55e97ff9914d2346a591c"
@@ -158,7 +163,7 @@ echo ""
 # Tool checks
 # ---------------------------------------------------------------------------
 
-for tool in cosmocc apelink assimilate fixupobj git curl tar sed make patch zip bzip2 ninja python3 meson pkg-config sha256sum autoreconf; do
+for tool in cosmocc apelink assimilate fixupobj git curl tar sed make patch zip bzip2 ninja python3 meson pkg-config sha256sum autoreconf xz; do
     command -v "$tool" &>/dev/null || die "$tool not found in PATH
 For cosmocc see https://cosmo.zip/pub/cosmocc/ (or a jart/cosmopolitan GitHub release)"
 done
@@ -199,6 +204,7 @@ echo "Fetching sources..."
 download "${ZLIB_SHA256}" "zlib-${ZLIB_VERSION}.tar.gz" "${ZLIB_URL}"
 download "${PCRE2_SHA256}" "pcre2-${PCRE2_VERSION}.tar.gz" "${PCRE2_URL}"
 download "${LIBFFI_SHA256}" "libffi-${LIBFFI_VERSION}.tar.gz" "${LIBFFI_URL}"
+download "${ZSTD_SHA256}" "zstd-${ZSTD_VERSION}.tar.xz" "${ZSTD_URL}"
 download "${PIXMAN_SHA256}" "pixman-${PIXMAN_VERSION}.tar.gz" "${PIXMAN_URL}"
 download "${LIBSLIRP_SHA256}" "libslirp-${LIBSLIRP_VERSION}.tar.bz2" "${LIBSLIRP_URL}"
 download "${COSMOPOLITAN_LICENSE_SHA256}" "cosmopolitan-LICENSE" "${COSMOPOLITAN_LICENSE_URL}"
@@ -206,6 +212,7 @@ mkdir "${SRC_DIR}/zlib-${ZLIB_VERSION}"
 tar -xf "${DL_DIR}/zlib-${ZLIB_VERSION}.tar.gz" -C "${SRC_DIR}/zlib-${ZLIB_VERSION}" --strip-components=1
 tar -xf "${DL_DIR}/pcre2-${PCRE2_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/libffi-${LIBFFI_VERSION}.tar.gz" -C "${SRC_DIR}"
+tar -xf "${DL_DIR}/zstd-${ZSTD_VERSION}.tar.xz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/pixman-${PIXMAN_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/libslirp-${LIBSLIRP_VERSION}.tar.bz2" -C "${SRC_DIR}"
 

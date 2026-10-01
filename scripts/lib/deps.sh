@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # SPDX-License-Identifier: MIT
-# Static dependencies (zlib, pcre2, libffi, glib, pixman, libslirp) built into a per-architecture sysroot.
+# Static dependencies (zlib, pcre2, zstd, libffi, glib, pixman, libslirp) built into a per-architecture sysroot.
 # Sourced by scripts/build.sh; relies on the variables it defines.
 
 exe_wrapper_for() {
@@ -30,6 +30,10 @@ build_deps() {
     # pcre2
     mkdir -p "${B}/pcre2" && cd "${B}/pcre2"
     run_logged "${arch}-pcre2" bash -c "'${SRC_DIR}/pcre2-${PCRE2_VERSION}/configure' --prefix='${S}' --host=${host_triplet} --disable-shared --enable-static && make -j${JOBS} && make install"
+
+    # zstd (only the library; it builds in the source tree, so use a copy)
+    mkdir -p "${B}/zstd" && cp -r "${SRC_DIR}/zstd-${ZSTD_VERSION}/." "${B}/zstd"
+    run_logged "${arch}-zstd" bash -c "cd '${B}/zstd/lib' && make -j${JOBS} CC='${cc}' AR='${ar}' PREFIX='${S}' libzstd.a libzstd.pc && make PREFIX='${S}' install-static install-pc install-includes"
 
     # libffi (static trampolines need a raw mmap of the exec file, unsupported here)
     # The Ubuntu orig tarball has no configure script, so generate it (in a copy,

@@ -72,7 +72,7 @@ build_qemu() {
         --disable-vhost-user --disable-vhost-kernel --disable-vhost-user-blk-server \
         --disable-vduse-blk-export --disable-libvduse \
         --disable-curl --disable-gnutls --disable-nettle --disable-gcrypt \
-        --disable-zstd --disable-bzip2 --disable-fuse \
+        --enable-zstd --disable-bzip2 --disable-fuse \
         --disable-seccomp --disable-attr --disable-libnfs --disable-libssh \
         --disable-rbd --disable-glusterfs --disable-capstone
 
