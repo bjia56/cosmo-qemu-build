@@ -1,29 +1,63 @@
 --- a/util/main-loop.c
 +++ b/util/main-loop.c
-@@ -37,6 +37,10 @@
+@@ -37,6 +37,11 @@
  
  #ifndef _WIN32
  #include <sys/wait.h>
 +#ifdef __COSMOPOLITAN__
 +#include <cosmo.h>
-+#include <libc/nt/ntdll.h>
++#include <pthread.h>
++#include <time.h>
 +#endif
  #endif
  
  #ifndef _WIN32
-@@ -158,6 +162,18 @@
+@@ -153,11 +158,51 @@
+ 
+ static GArray *gpollfds;
+ 
++#ifdef __COSMOPOLITAN__
++/*
++ * Windows rounds every timed wait up to its 15.6 ms tick unless a process
++ * asks for finer timers (native QEMU calls timeBeginPeriod(1)), and the
++ * guest's 1 kHz PIT needs the main loop to wake up about every millisecond:
++ * Linux guests with HZ=1000 panic at boot ("IO-APIC + timer doesn't work")
++ * when it does not.
++ *
++ * Calling NtSetTimerResolution() ourselves is not enough: Cosmopolitan's
++ * clock_nanosleep() requests the finest resolution for the duration of a
++ * sleep and then cancels the process's request when the last sleeper wakes,
++ * which also undoes ours. It only does so when no other thread is sleeping,
++ * so keep one thread asleep for the life of the process.
++ */
++static void *cosmo_win_timer_holder(void *opaque)
++{
++    struct timespec forever = { .tv_sec = 1000000000 };
++
++    for (;;) {
++        clock_nanosleep(CLOCK_MONOTONIC, 0, &forever, NULL);
++    }
++    return NULL;
++}
++
++static void cosmo_win_hold_timer_resolution(void)
++{
++    pthread_t thread;
++
++    if (pthread_create(&thread, NULL, cosmo_win_timer_holder, NULL) == 0) {
++        pthread_detach(thread);
++    }
++}
++#endif
++
+ int qemu_init_main_loop(Error **errp)
+ {
      int ret;
      GSource *src;
  
 +#ifdef __COSMOPOLITAN__
 +    if (IsWindows()) {
-+        /*
-+         * Windows rounds every timed wait up to its 15.6 ms tick unless
-+         * asked otherwise; native QEMU does timeBeginPeriod(1) for this.
-+         * The units are 100 ns.
-+         */
-+        uint32_t actual;
-+        NtSetTimerResolution(10000, true, &actual);
++        cosmo_win_hold_timer_resolution();
 +    }
 +#endif
 +
