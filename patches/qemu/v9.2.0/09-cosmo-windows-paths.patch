@@ -1,0 +1,73 @@
+--- a/block.c
++++ b/block.c
+@@ -66,6 +66,10 @@
+ #include <windows.h>
+ #endif
+ 
++#ifdef __COSMOPOLITAN__
++#include <cosmo.h>
++#endif
++
+ #define NOT_DONE 0x7fffffff /* used while emulated sync operation in progress */
+ 
+ /* Protected by BQL */
+@@ -155,12 +159,32 @@
+     return bs->bl.min_mem_alignment;
+ }
+ 
++#ifdef __COSMOPOLITAN__
++/*
++ * Cosmopolitan's open() and friends take Windows paths ("C:\dir\file", with
++ * either kind of slash) when running on Windows, but QEMU only knows about
++ * them under _WIN32. Without this, "C:\dir\file" is read as protocol "C".
++ */
++static bool cosmo_win_drive_prefix(const char *path)
++{
++    return IsWindows() &&
++           ((path[0] >= 'a' && path[0] <= 'z') ||
++            (path[0] >= 'A' && path[0] <= 'Z')) &&
++           path[1] == ':';
++}
++#endif
++
+ /* check if the path starts with "<protocol>:" */
+ int path_has_protocol(const char *path)
+ {
+     const char *p;
+ 
+-#ifdef _WIN32
++#if defined(__COSMOPOLITAN__)
++    if (cosmo_win_drive_prefix(path)) {
++        return 0;
++    }
++    p = path + strcspn(path, IsWindows() ? ":/\\" : ":/");
++#elif defined(_WIN32)
+     if (is_windows_drive(path) ||
+         is_windows_drive_prefix(path)) {
+         return 0;
+@@ -175,7 +199,12 @@
+ 
+ int path_is_absolute(const char *path)
+ {
+-#ifdef _WIN32
++#ifdef __COSMOPOLITAN__
++    if (IsWindows()) {
++        return cosmo_win_drive_prefix(path) || *path == '/' || *path == '\\';
++    }
++    return (*path == '/');
++#elif defined(_WIN32)
+     /* specific case for names like: "\\.\d:" */
+     if (is_windows_drive(path) || is_windows_drive_prefix(path)) {
+         return 1;
+@@ -209,7 +238,10 @@
+     p = protocol_stripped ?: base_path;
+ 
+     p1 = strrchr(base_path, '/');
+-#ifdef _WIN32
++#if defined(_WIN32) || defined(__COSMOPOLITAN__)
++#ifdef __COSMOPOLITAN__
++    if (IsWindows())
++#endif
+     {
+         const char *p2;
+         p2 = strrchr(base_path, '\\');
