@@ -37,7 +37,7 @@ build_deps() {
     mkdir -p "${B}/libffi-src" && cp -r "${SRC_DIR}/libffi-${LIBFFI_VERSION}/." "${B}/libffi-src"
     run_logged "${arch}-libffi-autoreconf" bash -c "cd '${B}/libffi-src' && autoreconf -fi"
     mkdir -p "${B}/libffi" && cd "${B}/libffi"
-    run_logged "${arch}-libffi" bash -c "'${B}/libffi-src/configure' --prefix='${S}' --host=${host_triplet} --disable-shared --enable-static --disable-exec-static-tramp && make -j${JOBS} && make install"
+    run_logged "${arch}-libffi" bash -c "'${B}/libffi-src/configure' --prefix='${S}' --host=${host_triplet} --disable-shared --enable-static --disable-exec-static-tramp --disable-docs && make -j${JOBS} && make install"
     unset CC AR RANLIB
 
     # glib: only glib, gmodule and gthread are needed by QEMU. gio does not
