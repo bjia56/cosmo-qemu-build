@@ -21,12 +21,11 @@ jobs:
   build:
     name: Build qemu-img and the system emulators
     runs-on: ubuntu-latest
-    timeout-minutes: 240
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Setup cosmocc
-        uses: bjia56/setup-cosmocc@c0097c34319baeca1b41cc857ec5c643f2f5baf6
+        uses: bjia56/setup-cosmocc@c0097c34319baeca1b41cc857ec5c643f2f5baf6 # v0.0.6
         with:
           version: ${{ env.cosmocc_version }}
 
@@ -46,21 +45,21 @@ jobs:
         run: ./scripts/smoke_test_aarch64.sh out
 
       - name: Upload qemu-img
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qemu-img
           path: out/qemu-img.com
           if-no-files-found: error
 
       - name: Upload qemu-system-x86_64
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qemu-system-x86_64
           path: out/qemu-system-x86_64.com
           if-no-files-found: error
 
       - name: Upload qemu-system-aarch64
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qemu-system-aarch64
           path: out/qemu-system-aarch64.com
@@ -68,8 +67,70 @@ jobs:
 
       - name: Upload build logs on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: build-logs
           path: build/logs/
           if-no-files-found: ignore
+
+  release:
+    name: Publish release
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-slim
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    # one release at a time so concurrent pushes can't compute the same tag
+    concurrency:
+      group: release
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      # Tag is <upstream QEMU version>.<n>, e.g. v9.2.0.0. If a tag for this
+      # version already points at HEAD, reuse it; otherwise bump n.
+      - name: Compute version tag
+        id: version
+        run: |
+          upstream="$(sed -n 's/^QEMU_VERSION="\${QEMU_VERSION:-\(v[0-9][0-9.]*\)}"$/\1/p' scripts/build.sh)"
+          [ -n "$upstream" ] || { echo "could not parse QEMU_VERSION from scripts/build.sh" >&2; exit 1; }
+
+          existing="$(git tag --points-at "$GITHUB_SHA" --list "${upstream}.*" | grep -E "^${upstream//./\\.}\.[0-9]+$" | sort -V | tail -n1 || true)"
+          if [ -n "$existing" ]; then
+            tag="$existing"
+          else
+            last="$(git tag --list "${upstream}.*" | grep -E "^${upstream//./\\.}\.[0-9]+$" | sed "s/^${upstream//./\\.}\.//" | sort -n | tail -n1 || true)"
+            tag="${upstream}.$(( ${last:--1} + 1 ))"
+          fi
+          echo "upstream=$upstream" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Release tag: $tag"
+
+      - name: Download build artifacts
+        run: |
+          mkdir dist
+          for n in qemu-img qemu-system-x86_64 qemu-system-aarch64; do
+            gh run download "$GITHUB_RUN_ID" --name "$n" --dir dist
+          done
+          ls -l dist
+
+      - name: Create or update release
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          UPSTREAM: ${{ steps.version.outputs.upstream }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "$TAG" \
+              --notes "QEMU ${UPSTREAM} built with Cosmopolitan Libc from ${GITHUB_SHA}."
+          fi
+          gh release upload "$TAG" dist/*.com --clobber
