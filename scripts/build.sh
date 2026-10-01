@@ -213,6 +213,7 @@ clone_tag "${PROXY_LIBINTL_REPO}" "${PROXY_LIBINTL_VERSION}" "${SRC_DIR}/glib/su
 clone_tag "${QEMU_REPO}" "${QEMU_VERSION}" "${SRC_DIR}/qemu" "${QEMU_COMMIT}"
 
 apply_patches glib "${GLIB_VERSION}" "${SRC_DIR}/glib"
+apply_patches libslirp "${LIBSLIRP_VERSION}" "${SRC_DIR}/libslirp-v${LIBSLIRP_VERSION}"
 apply_patches qemu "${QEMU_VERSION}" "${SRC_DIR}/qemu"
 
 # ---------------------------------------------------------------------------
