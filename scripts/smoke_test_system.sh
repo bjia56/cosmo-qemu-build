@@ -81,6 +81,7 @@ fi
 
 case "$GUEST" in
 x86_64)
+    MACHINE_ARGS="-machine pc -accel tcg"
     # Boot sector that prints a message on COM1, waiting for the UART each byte
     printf '\276\035\174\254\204\300\164\022\210\303\272\375\003\354\250\040\164\370\272\370\003\210\330\356\353\351\364\353\375COSMO-X86-BOOT-OK\r\n\0' > boot.img
     pad=$((510 - $(wc -c < boot.img)))
@@ -120,6 +121,7 @@ x86_64)
     fi
     ;;
 aarch64)
+    MACHINE_ARGS="-machine virt -cpu cortex-a57 -accel tcg"
     # Bare-metal payload for the virt machine's PL011 UART at 0x09000000. It is loaded
     # above the start of RAM, where virt puts its device tree.
     printf '\001\040\241\322\342\000\000\020\103\024\100\070\143\000\000\064\043\000\000\071\375\377\377\027\177\040\003\325\377\377\377\027COSMO-AARCH64-BOOT-OK\n\0' > payload.bin
@@ -149,5 +151,56 @@ aarch64)
     exit 2
     ;;
 esac
+
+# monitor_cmds <monitor commands> <qemu args...>: start the emulator paused with
+# the monitor on stdin, run the commands (then quit) and keep the output in out.txt
+monitor_cmds() {
+    cmds=$1; shift
+    printf '%s\nquit\n' "$cmds" > cmds.txt
+    : > out.txt
+    $QEMU -S -display none -serial none -parallel none -monitor stdio -m 64 $MACHINE_ARGS "$@" \
+        < cmds.txt > out.txt 2>&1 &
+    pid=$!
+    n=0
+    while [ $n -lt "$TIMEOUT" ] && kill -0 $pid 2>/dev/null; do
+        sleep 1
+        n=$((n + 1))
+    done
+    if kill -0 $pid 2>/dev/null; then
+        kill $pid 2>/dev/null || true
+        wait $pid 2>/dev/null || true
+        return 1
+    fi
+    wait $pid 2>/dev/null || true
+}
+
+# Ports for the tests below; they only need to be unlikely to clash
+PORT=$((20000 + $$ % 20000))
+
+# User-mode networking (libslirp): the emulator has to start it, parse the
+# forwarding rule, and list it
+monitor_cmds "info usernet" \
+    -netdev "user,id=n0,hostfwd=tcp:127.0.0.1:${PORT}-:22" -device virtio-net-pci,netdev=n0 \
+    || fail "user networking (monitor did not finish)"
+grep -a -q 'HOST_FORWARD' out.txt || fail "user networking lists the hostfwd rule"
+grep -a -q "${PORT}" out.txt || fail "user networking forwards the requested port"
+pass "user-mode networking (libslirp) with a host forward"
+
+# Legacy command line shorthands and option parsing, which Cosmopolitan's sscanf()
+# cannot do by itself (QEMU patch 10): the chardev shorthand, -readconfig, -global
+cat > cfg.conf <<EOF
+[chardev "c0"]
+  backend = "null"
+EOF
+monitor_cmds "info chardev
+info network" \
+    -serial "tcp:127.0.0.1:$((PORT + 1)),server,nowait" -readconfig cfg.conf \
+    -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
+    -global virtio-net-pci.mac=52:54:00:aa:bb:cc \
+    || fail "option parsing (monitor did not finish)"
+grep -a -q "tcp:127.0.0.1:$((PORT + 1))" out.txt || fail "-serial tcp:host:port shorthand"
+grep -a -q "c0: filename=null" out.txt || fail "-readconfig chardev"
+grep -a -q '52:54:00:aa:bb:cc' out.txt || fail "-global property reaches the device"
+pass "-serial tcp: shorthand, -readconfig and -global parsing"
 
 echo "All system emulator smoke tests passed"
