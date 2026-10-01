@@ -230,4 +230,11 @@ for model in $models; do
 done
 pass "virtio-9p (virtfs) with a local fsdev: $models"
 
+# VNC server: it runs a worker thread on a 100 KiB on-stack structure, which
+# crashed at startup with Cosmopolitan's default thread stack (QEMU patch 16)
+monitor_cmds "info vnc" -vnc "127.0.0.1:$((PORT + 2)),websocket=127.0.0.1:$((PORT + 3))" \
+    || fail "vnc (monitor did not finish)"
+grep -a -q "127.0.0.1:$((5900 + PORT + 2))" out.txt || fail "vnc server listens on the requested display"
+pass "VNC server with a WebSocket listener"
+
 echo "All system emulator smoke tests passed"

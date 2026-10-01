@@ -33,7 +33,15 @@ entitlement on first use, so HVF works without any setup. See [`patches/README.m
 
 Not included: network block drivers (curl, ssh, nfs, rbd, gluster), TLS (gnutls), RSA/public-key
 crypto, libgcrypt, Linux-specific I/O (io_uring, linux-aio),
-graphics front ends (SDL, GTK, ...), and vhost.
+graphics front ends (SDL, GTK, ...) and vhost. The only display is the built-in VNC server, below.
+
+## Display: VNC
+
+`-vnc 127.0.0.1:0` serves the guest's display on port 5900, with no graphics library involved: QEMU's VNC server
+needs only pixman and zlib, and ZRLE, Tight (with PNG), Hextile and zlib encodings work. `password=on` (set it with
+`set_password vnc <pw>` in the monitor) and `websocket=<addr>:<port>` (for noVNC) are available. Not built: TLS
+(`tls-creds`, VeNCrypt), SASL and the lossy JPEG encoding. Bind VNC to localhost unless you add your own tunnel,
+since the built-in authentication is weak.
 
 ## Sharing a host directory (virtfs / 9p)
 
