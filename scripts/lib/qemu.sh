@@ -10,14 +10,7 @@ build_qemu() {
     # -mcosmo is added by the compiler wrappers. It stays exported so the reconfigure
     # ninja runs after a meson.build change sees it too.
     export COSMO_MCOSMO=1
-    # Stack protector with a global canary (compat/ssp): the default TLS/missing-symbol
-    # canary does not work under cosmocc. The guard is linked as an object so it is always
-    # present, and compiled without protection itself.
-    local ssp_obj="${S}/lib/cosmo-ssp.o"
-    mkdir -p "${S}/lib"
-    run_logged "${arch}-cosmo-ssp" "${arch}-cosmo-cc" -O2 -fno-stack-protector \
-        -c "${PROJECT_ROOT}/compat/ssp/cosmo-ssp.c" -o "${ssp_obj}"
-    local extra_cflags="-I${S}/include -mstack-protector-guard=global"
+    local extra_cflags="-I${S}/include"
     # cosmocc's aarch64 GCC 14.1 ICEs (emit_library_call_value_1) on qemu-io-cmds.c at -O2 otherwise
     if [ "${arch}" = "aarch64" ]; then
         extra_cflags="${extra_cflags} -fno-inline-functions"
@@ -47,8 +40,8 @@ build_qemu() {
     fi
 
     #  --prefix=/zip, --disable-relocatable: data files come from the embedded zip, not relative to the executable
-    #  --enable-stack-protector, -mstack-protector-guard=global: see compat/ssp (cosmocc's
-    #     TLS canary is unusable in constructors, and aarch64 has no guard symbol)
+    #  --enable-stack-protector: the compiler shims add the global canary (see compat/ssp);
+    #     cosmocc's TLS canary is unusable in constructors, and aarch64 has no guard symbol
     #  --with-coroutine=ucontext: the sigaltstack backend deadlocks under cosmo
     #  --disable-plugins: TCG plugins need dlopen
     #  --enable-gnutls --enable-nettle: crypto stays on nettle; gnutls only does TLS
@@ -57,7 +50,7 @@ build_qemu() {
         "${SRC_DIR}/qemu/configure" \
         --prefix=/zip --disable-relocatable \
         --cross-prefix="${arch}-cosmo-" --cpu="${arch}" --host-cc=cc \
-        --extra-cflags="${extra_cflags}" --extra-ldflags="-L${S}/lib ${ssp_obj}" \
+        --extra-cflags="${extra_cflags}" --extra-ldflags="-L${S}/lib" \
         "${system_flags[@]}" \
         --disable-user --disable-docs --disable-guest-agent \
         --enable-tools --disable-werror \
