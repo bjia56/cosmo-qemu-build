@@ -22,6 +22,18 @@ TIMEOUT="${SMOKE_TIMEOUT:-60}"
 pass() { echo "ok   - $1"; }
 fail() { echo "FAIL - $1" >&2; [ -f out.txt ] && tail -n 20 out.txt >&2; exit 1; }
 
+# stop_pid <pid>: end a background emulator. The reaping only happens once it is gone: a native
+# Windows process can ignore kill, and waiting for it would hang the whole test.
+stop_pid() {
+    kill "$1" 2>/dev/null || true
+    sleep 1
+    if kill -0 "$1" 2>/dev/null; then
+        kill -9 "$1" 2>/dev/null || true
+    else
+        wait "$1" 2>/dev/null || true
+    fi
+}
+
 # run_guest <expected text> <qemu args...>: run until the text appears on the serial console or the timeout expires
 run_guest() {
     expect=$1; shift
@@ -31,16 +43,14 @@ run_guest() {
     n=0
     while [ $n -lt "$TIMEOUT" ]; do
         if grep -a -q -E "$expect" out.txt 2>/dev/null; then
-            kill $pid 2>/dev/null || true
-            wait $pid 2>/dev/null || true
+            stop_pid $pid
             return 0
         fi
         kill -0 $pid 2>/dev/null || break
         sleep 1
         n=$((n + 1))
     done
-    kill $pid 2>/dev/null || true
-    wait $pid 2>/dev/null || true
+    stop_pid $pid
     return 1
 }
 
@@ -154,8 +164,7 @@ monitor_cmds() {
         n=$((n + 1))
     done
     if kill -0 $pid 2>/dev/null; then
-        kill $pid 2>/dev/null || true
-        wait $pid 2>/dev/null || true
+        stop_pid $pid
         return 1
     fi
     wait $pid 2>/dev/null || true

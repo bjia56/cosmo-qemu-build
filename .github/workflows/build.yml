@@ -124,8 +124,25 @@ jobs:
           done
           ls -l dist
 
-      - name: Test
-        run: ./scripts/smoke_test_all.sh dist
+      # One step per stage, each with its own timeout: a hang in one does not hide the rest
+      - name: Test qemu-img
+        timeout-minutes: 10
+        run: ./scripts/smoke_test_all.sh dist img
+
+      - name: Test the system emulators
+        if: ${{ !cancelled() }}
+        timeout-minutes: 15
+        run: ./scripts/smoke_test_all.sh dist system
+
+      - name: Test -sandbox
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: ./scripts/smoke_test_all.sh dist sandbox
+
+      - name: Test the system emulators with -sandbox
+        if: ${{ !cancelled() }}
+        timeout-minutes: 15
+        run: ./scripts/smoke_test_all.sh dist system-sandbox
 
   release:
     name: Publish release
