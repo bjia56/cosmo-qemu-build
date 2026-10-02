@@ -18,21 +18,25 @@ diff --git a/hw/9pfs/9p.c b/hw/9pfs/9p.c
 index 5785177..7687f24 100644
 --- a/hw/9pfs/9p.c
 +++ b/hw/9pfs/9p.c
-@@ -4353,6 +4353,14 @@ static void __attribute__((__constructor__)) v9fs_set_fd_limit(void)
+@@ -4353,8 +4353,16 @@ static void __attribute__((__constructor__)) v9fs_set_fd_limit(void)
  {
      struct rlimit rlim;
      if (getrlimit(RLIMIT_NOFILE, &rlim) < 0) {
+-        error_report("Failed to get the resource limit");
+-        exit(1);
 +#ifdef __COSMOPOLITAN__
 +        if (errno == EINVAL) {
-+            /* Windows has no such limit and cosmopolitan reports EINVAL */
-+            open_fd_hw = 1024 - 400;
-+            open_fd_rc = 1024 / 2;
-+            return;
-+        }
++            /* Windows has no such limit: use cosmopolitan's default (10000) */
++            rlim.rlim_cur = getdtablesize();
++        } else
 +#endif
-         error_report("Failed to get the resource limit");
-         exit(1);
++        {
++            error_report("Failed to get the resource limit");
++            exit(1);
++        }
      }
+     open_fd_hw = rlim.rlim_cur - MIN(400, rlim.rlim_cur / 3);
+     open_fd_rc = rlim.rlim_cur / 2;
 diff --git a/hw/block/block.c b/hw/block/block.c
 index 3ceca7d..5adcf97 100644
 --- a/hw/block/block.c
