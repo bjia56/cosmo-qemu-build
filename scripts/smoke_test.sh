@@ -1,13 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
-# Smoke test for a built qemu-img binary.
-#
-# Usage:
-#   ./scripts/smoke_test.sh "sh /path/to/qemu-img.com"
-#   QEMU_IMG="/path/to/qemu-img" ./scripts/smoke_test.sh
-#
-# The argument (or $QEMU_IMG) is the full command used to invoke qemu-img, so
-# APE binaries can be run through `sh` on hosts without an APE loader.
+# Smoke test for a built qemu-img.
+# Usage: ./scripts/smoke_test.sh "sh /path/to/qemu-img.com"   (or set $QEMU_IMG)
 
 set -eu
 

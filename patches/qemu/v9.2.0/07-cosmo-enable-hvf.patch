@@ -46,13 +46,10 @@ new file mode 100644
 index 0000000..f086aa7
 --- /dev/null
 +++ b/accel/hvf/hvf-cosmo.c
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,83 @@
 +/*
-+ * Loading Hypervisor.framework at run time, for the Cosmopolitan build.
-+ *
-+ * The framework cannot be linked into a Cosmopolitan executable, so every
-+ * hv_*() function the accelerator uses is looked up with cosmo_dlsym() when
-+ * the accelerator is initialized (see compat/hvf/Hypervisor/Hypervisor.h).
++ * Loads Hypervisor.framework at run time: every hv_*() function is looked up
++ * with cosmo_dlsym() at accelerator init (see compat/hvf/Hypervisor/Hypervisor.h).
 + *
 + * SPDX-License-Identifier: GPL-2.0-or-later
 + */
@@ -149,15 +146,14 @@ diff --git a/meson.build b/meson.build
 index ac84d95..fdf49f1 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -850,8 +850,17 @@ endif
+@@ -850,8 +850,16 @@ endif
  
  hvf = not_found
  if get_option('hvf').allowed()
 -  hvf = dependency('appleframeworks', modules: 'Hypervisor',
 -                   required: get_option('hvf'))
 +  if host_os == 'cosmopolitan'
-+    # Hypervisor.framework is loaded at run time (accel/hvf/hvf-cosmo.c); only
-+    # its arm64 interface exists, and only Apple Silicon can load it
++    # loaded at run time (accel/hvf/hvf-cosmo.c); arm64 only
 +    if host_machine.cpu() == 'aarch64' and \
 +       cc.has_header('Hypervisor/Hypervisor.h', required: get_option('hvf'))
 +      hvf = declare_dependency()
@@ -179,7 +175,7 @@ index 458d1ce..d190e52 100644
  {
 -#if defined(CONFIG_KVM)
 +#if defined(CONFIG_KVM) && defined(CONFIG_HVF)
-+    /* Both are built in (Cosmopolitan): use the accelerator in use */
++    /* both are built in: use the active accelerator */
 +    ARMCPU *cpu = ARM_CPU(obj);
 +    if (hvf_enabled()) {
 +        hvf_arm_set_cpu_features_from_host(cpu);
@@ -199,7 +195,7 @@ diff --git a/target/arm/hvf/hvf.c b/target/arm/hvf/hvf.c
 index ca7ea92..61a9fa8 100644
 --- a/target/arm/hvf/hvf.c
 +++ b/target/arm/hvf/hvf.c
-@@ -885,18 +885,32 @@ static bool hvf_arm_get_host_cpu_features(ARMHostCPUFeatures *ahcf)
+@@ -885,18 +885,29 @@ static bool hvf_arm_get_host_cpu_features(ARMHostCPUFeatures *ahcf)
  
      /* We set up a small vcpu to extract host registers */
  
@@ -224,17 +220,14 @@ index ca7ea92..61a9fa8 100644
  
      clamp_id_aa64mmfr0_parange_to_ipa_size(&host_isar.id_aa64mmfr0);
  
-+    /*
-+     * Newer Apple SoCs report SME in ID_AA64PFR1_EL1, but HVF cannot run SME
-+     * guests, and there is no "sme" property for the host CPU to turn it off
-+     * with (arm_cpu_finalize_features() would abort looking for it). Hide it.
-+     */
++    /* Newer Apple SoCs report SME, which HVF cannot run, and there is no "sme"
++     * property to turn it off (arm_cpu_finalize_features() would abort): hide it. */
 +    host_isar.id_aa64pfr1 &= ~(0xfULL << 24);
 +
      ahcf->isar = host_isar;
  
      /*
-@@ -913,6 +927,8 @@ static bool hvf_arm_get_host_cpu_features(ARMHostCPUFeatures *ahcf)
+@@ -913,6 +924,8 @@ static bool hvf_arm_get_host_cpu_features(ARMHostCPUFeatures *ahcf)
  
      /* Make sure we don't advertise AArch32 support for EL0/EL1 */
      if ((host_isar.id_aa64pfr0 & 0xff) != 0x11) {

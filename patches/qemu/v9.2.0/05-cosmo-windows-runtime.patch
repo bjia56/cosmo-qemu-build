@@ -107,16 +107,14 @@ index 6feb3d2..85fed34 100644
  #include "qemu/mmap-alloc.h"
  #include "qemu/host-utils.h"
  #include "qemu/cutils.h"
-@@ -251,6 +254,38 @@ static inline size_t mmap_guard_pagesize(int fd)
+@@ -251,6 +254,36 @@ static inline size_t mmap_guard_pagesize(int fd)
  #endif
  }
  
 +#ifdef __COSMOPOLITAN__
 +/*
-+ * Windows can only unmap or replace whole allocations, so the reserve, carve
-+ * up and trim sequence below cannot work there. Map the RAM directly instead:
-+ * mmap() returns addresses aligned to the allocation granularity, which is
-+ * at least the alignment asked for, and there is no guard page.
++ * Windows can only unmap or replace whole allocations, so the reserve/carve/trim
++ * sequence below cannot work: map directly (granularity-aligned, no guard page).
 + */
 +static size_t qemu_ram_windows_size(size_t size)
 +{
@@ -146,7 +144,7 @@ index 6feb3d2..85fed34 100644
  void *qemu_ram_mmap(int fd,
                      size_t size,
                      size_t align,
-@@ -261,6 +296,13 @@ void *qemu_ram_mmap(int fd,
+@@ -261,6 +294,13 @@ void *qemu_ram_mmap(int fd,
      size_t offset, total;
      void *ptr, *guardptr;
  
@@ -160,7 +158,7 @@ index 6feb3d2..85fed34 100644
      /*
       * Note: this always allocates at least one extra page of virtual address
       * space, even if size is already aligned.
-@@ -304,6 +346,12 @@ void *qemu_ram_mmap(int fd,
+@@ -304,6 +344,12 @@ void *qemu_ram_mmap(int fd,
  void qemu_ram_munmap(int fd, void *ptr, size_t size)
  {
      if (ptr) {

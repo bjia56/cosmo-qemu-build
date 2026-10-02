@@ -1,18 +1,14 @@
 --- a/target/i386/whpx/whpx-all.c
 +++ b/target/i386/whpx/whpx-all.c
-@@ -585,6 +585,40 @@
+@@ -585,6 +585,36 @@
      return;
  }
  
 +/*
-+ * With the Hyper-V APIC, a vCPU that executed HLT stays halted inside the
-+ * hypervisor. An interrupt requested with WHvRequestInterrupt (MSIs, and so
-+ * the IO-APIC and the LAPIC timer) wakes it, but the external interrupt we
-+ * queue for the PIC through WHvRegisterPendingEvent does not: a BIOS or
-+ * bootloader idling in HLT, such as ISOLINUX at its "boot:" prompt, then
-+ * never sees the timer tick, and the PIC is left with IRQ0 in service. Clear
-+ * the halt state ourselves when injecting such an interrupt (as upstream QEMU
-+ * later did, in whpx_vcpu_kick_out_of_hlt()).
++ * With the Hyper-V APIC a vCPU halted in HLT is woken by WHvRequestInterrupt
++ * (MSIs) but not by the PIC interrupt queued via WHvRegisterPendingEvent, so a
++ * bootloader idling in HLT (ISOLINUX) never saw a tick. Clear the halt state
++ * when injecting one, as upstream's whpx_vcpu_kick_out_of_hlt() later did.
 + */
 +static void whpx_vcpu_kick_out_of_hlt(CPUState *cpu)
 +{
@@ -41,7 +37,7 @@
  static int whpx_get_tsc(CPUState *cpu)
  {
      WHV_REGISTER_NAME tsc_reg = WHvX64RegisterTsc;
-@@ -1565,6 +1599,7 @@
+@@ -1565,6 +1595,7 @@
                  .Vector = irq,
              };
              reg_count += 1;

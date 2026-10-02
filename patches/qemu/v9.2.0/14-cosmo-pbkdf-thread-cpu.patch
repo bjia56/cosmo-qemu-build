@@ -1,14 +1,11 @@
 --- a/crypto/pbkdf.c
 +++ b/crypto/pbkdf.c
-@@ -69,6 +69,20 @@
+@@ -69,6 +69,17 @@
      *val_ms = ((info.user_time.seconds * 1000ll) +
                 (info.user_time.microseconds / 1000));
      return 0;
 +#elif defined(__COSMOPOLITAN__)
-+    /*
-+     * RUSAGE_THREAD is a run-time value under Cosmopolitan, so it is not a
-+     * macro for the check below. CLOCK_THREAD_CPUTIME_ID works on every host.
-+     */
++    /* RUSAGE_THREAD is a run-time value here, not a macro for the check below */
 +    struct timespec ts;
 +
 +    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) < 0) {

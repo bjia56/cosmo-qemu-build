@@ -72,21 +72,15 @@ new file mode 100644
 index 0000000..0e31066
 --- /dev/null
 +++ b/ui/sdl2-cosmo.c
-@@ -0,0 +1,148 @@
+@@ -0,0 +1,142 @@
 +/*
-+ * SDL2 for Cosmopolitan builds: the host's SDL2 library, loaded at run time.
++ * SDL2 for Cosmopolitan builds: wrappers around the SDL2 functions found with
++ * cosmo_dlsym() in the host's SDL2 (SDL2.dll, libSDL2-2.0.0.dylib or
++ * libSDL2-2.0.so.0), called through cosmo_dltramp() (System V to Microsoft x64
++ * where needed). The SDL headers are only used to compile ui/sdl2*.c.
 + *
-+ * This build links no graphics library.  The SDL headers are only used to
-+ * compile ui/sdl2*.c; the functions they declare are defined here as thin
-+ * wrappers that forward to the function addresses found in the host's SDL2
-+ * (SDL2.dll, libSDL2-2.0.0.dylib or libSDL2-2.0.so.0) when the display is
-+ * initialized.  Every entry point goes through cosmo_dltramp(), which converts
-+ * between the System V calling convention used here and the one the library
-+ * uses (Microsoft x64 on Windows), as for Hypervisor.framework and WHPX.
-+ *
-+ * Only the 2D renderer path is covered: nothing here takes a callback from SDL
-+ * (no event watches, timers, audio or threads), so no trampolines in the other
-+ * direction are needed.
++ * Only the 2D renderer path is covered; SDL calls nothing back here, so no
++ * reverse trampolines are needed.
 + *
 + * This work is licensed under the terms of the GNU GPL, version 2 or later.
 + * See the COPYING file in the top-level directory.

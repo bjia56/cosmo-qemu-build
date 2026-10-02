@@ -1,13 +1,8 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
-# Smoke tests for the aarch64 halves of the fat binaries on an x86_64 machine,
-# by converting a copy of each binary to a native aarch64 ELF and running it
-# under qemu-user (qemu-aarch64-static).
-#
-# Usage:
-#   ./scripts/smoke_test_aarch64.sh [output directory (default: ./out)]
-#
-# Needs assimilate (from cosmocc) and qemu-aarch64-static in PATH.
+# Smoke tests for the aarch64 halves on an x86_64 machine: assimilate a copy to a
+# native aarch64 ELF and run it under qemu-aarch64-static (both needed in PATH).
+# Usage: ./scripts/smoke_test_aarch64.sh [output directory (default: ./out)]
 
 set -eu
 
@@ -20,7 +15,6 @@ for tool in assimilate qemu-aarch64-static; do
     command -v "$tool" >/dev/null 2>&1 || { echo "$tool not found in PATH" >&2; exit 2; }
 done
 
-# aarch64 copy of an APE file: $TMP/<name>
 aarch64_copy() {
     cp "${OUT_DIR}/$1.com" "${TMP}/$1"
     assimilate -a -c "${TMP}/$1"

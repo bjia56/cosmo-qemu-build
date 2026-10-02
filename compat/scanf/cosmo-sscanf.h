@@ -1,9 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/*
- * Cosmopolitan Libc's sscanf() has no %[...] conversion: every scanset makes
- * it return -1. cosmo_sscanf() adds scansets; see cosmo-sscanf.c. Including
- * this header redirects sscanf() to it.
- */
+/* Cosmopolitan's sscanf() returns -1 on any %[...] scanset; including this redirects to cosmo_sscanf(). */
 #ifndef COSMO_SSCANF_H
 #define COSMO_SSCANF_H
 

@@ -1,43 +1,34 @@
 # shellcheck shell=bash
 # SPDX-License-Identifier: MIT
-# Configuring and building QEMU for one host architecture.
-# Sourced by scripts/build.sh; relies on the variables it defines.
+# Configuring and building QEMU for one host architecture. Sourced by scripts/build.sh.
 
 build_qemu() {
     local arch=$1 S=$2 B=$3
     local qb="${B}/qemu"
     mkdir -p "${qb}" && cd "${qb}"
 
-    # Compile QEMU with -mcosmo (_COSMO_SOURCE), which exposes Cosmopolitan
-    # extensions such as ShowCrashReports(); the two names it collides with are
-    # patched in the QEMU sources. The compiler wrappers add the flag (see
-    # COSMO_MCOSMO), and the variable stays exported so that the reconfigure
+    # -mcosmo is added by the compiler wrappers. It stays exported so the reconfigure
     # ninja runs after a meson.build change sees it too.
     export COSMO_MCOSMO=1
     local extra_cflags="-I${S}/include"
-    # cosmocc's aarch64 GCC 14.1 crashes (ICE in emit_library_call_value_1)
-    # compiling qemu-io-cmds.c at -O2 unless inlining of non-inline functions
-    # is disabled.
+    # cosmocc's aarch64 GCC 14.1 ICEs (emit_library_call_value_1) on qemu-io-cmds.c at -O2 otherwise
     if [ "${arch}" = "aarch64" ]; then
         extra_cflags="${extra_cflags} -fno-inline-functions"
     fi
 
-    # System emulators, and KVM when a guest matches this host architecture
     local system_flags kvm_flag="--disable-kvm" targets="" guest
     if [ -n "${SYSTEM_TARGETS}" ]; then
         for guest in ${SYSTEM_TARGETS}; do
             targets+="${guest}-softmmu,"
             [ "${guest}" = "${arch}" ] && kvm_flag="--enable-kvm"
         done
-        # WHPX (Windows Hypervisor Platform, loaded with cosmo_dlopen at run
-        # time on Windows) for x86_64 guests on the x86_64 host slice
+        # WHPX: x86_64 guests, x86_64 slice
         local whpx_flag=""
         if [ "${arch}" = "x86_64" ] && [[ " ${SYSTEM_TARGETS} " == *" x86_64 "* ]]; then
             whpx_flag="--enable-whpx"
             extra_cflags="${extra_cflags} -I${S}/include/whp"
         fi
-        # HVF (Hypervisor.framework, loaded with cosmo_dlopen at run time on
-        # Apple Silicon) for aarch64 guests on the aarch64 host slice
+        # HVF: aarch64 guests, aarch64 slice
         local hvf_flag=""
         if [ "${arch}" = "aarch64" ] && [[ " ${SYSTEM_TARGETS} " == *" aarch64 "* ]]; then
             hvf_flag="--enable-hvf"
@@ -48,21 +39,11 @@ build_qemu() {
         system_flags=(--disable-system --disable-slirp --disable-virtfs --disable-vnc --disable-vnc-jpeg --disable-sdl)
     fi
 
-    # Notes on the flags:
-    #  --prefix=/zip              data files are looked up in the embedded zip
-    #  --disable-relocatable      otherwise QEMU resolves its data directory
-    #                             relative to the executable, not to /zip
-    #  --disable-stack-protector  cosmocc constructors run before TLS is set up
-    #  --with-coroutine=ucontext  the sigaltstack backend deadlocks under cosmo
-    #  --disable-plugins          TCG plugins are loaded with dlopen
-    #  --enable-virtfs            9p file sharing, with the Cosmopolitan host support from
-    #                             patch 15 (its extended attributes only work on Linux)
-    #  --enable-gnutls            TLS (needs hogweed from nettle; crypto itself stays on nettle)
-    #  --enable-vnc               the built-in VNC server (pixman, zlib, libjpeg-turbo and
-    #                             gnutls for TLS; no SASL)
-    #  --enable-sdl               -display sdl, with the host's SDL2 loaded at run time (patch 17);
-    #                             only SDL's headers are in the sysroot
-    #  the rest strips everything cosmocc cannot build or QEMU does not need
+    #  --prefix=/zip, --disable-relocatable: data files come from the embedded zip, not relative to the executable
+    #  --disable-stack-protector: cosmocc constructors run before TLS is set up
+    #  --with-coroutine=ucontext: the sigaltstack backend deadlocks under cosmo
+    #  --disable-plugins: TCG plugins need dlopen
+    #  --enable-gnutls --enable-nettle: crypto stays on nettle; gnutls only does TLS
     run_logged "${arch}-qemu-configure" env \
         PKG_CONFIG_PATH="${S}/lib/pkgconfig" PKG_CONFIG_LIBDIR="${S}/lib/pkgconfig" \
         "${SRC_DIR}/qemu/configure" \
@@ -82,8 +63,7 @@ build_qemu() {
         --disable-seccomp --disable-attr --disable-libnfs --disable-libssh \
         --disable-rbd --disable-glusterfs --disable-capstone
 
-    # A later meson.build change makes ninja regenerate the build; without
-    # this, the regenerated build would pick up host libraries.
+    # keep set: ninja's regeneration after a meson.build change would otherwise pick up host libraries
     export PKG_CONFIG_PATH="${S}/lib/pkgconfig" PKG_CONFIG_LIBDIR="${S}/lib/pkgconfig"
     local ninja_targets=(qemu-img)
     for guest in ${SYSTEM_TARGETS}; do
@@ -97,7 +77,7 @@ build_qemu() {
     for guest in ${SYSTEM_TARGETS}; do
         [ -f "qemu-system-${guest}" ] || die "qemu-system-${guest} not found after ${arch} build"
         cp "qemu-system-${guest}" "${B}/qemu-system-${guest}.elf"
-        # the system emulators carry a .zip section that apelink wants fixed up
+        # the .zip section needs fixing up for apelink
         fixupobj "${B}/qemu-system-${guest}.elf"
     done
     echo "  built ${B}/qemu-img.elf ${SYSTEM_TARGETS:+and ${SYSTEM_TARGETS}}"

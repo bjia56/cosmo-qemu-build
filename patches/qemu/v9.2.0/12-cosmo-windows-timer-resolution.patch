@@ -12,23 +12,16 @@
  #endif
  
  #ifndef _WIN32
-@@ -153,11 +158,51 @@
+@@ -153,11 +158,44 @@
  
  static GArray *gpollfds;
  
 +#ifdef __COSMOPOLITAN__
 +/*
-+ * Windows rounds every timed wait up to its 15.6 ms tick unless a process
-+ * asks for finer timers (native QEMU calls timeBeginPeriod(1)), and the
-+ * guest's 1 kHz PIT needs the main loop to wake up about every millisecond:
-+ * Linux guests with HZ=1000 panic at boot ("IO-APIC + timer doesn't work")
-+ * when it does not.
-+ *
-+ * Calling NtSetTimerResolution() ourselves is not enough: Cosmopolitan's
-+ * clock_nanosleep() requests the finest resolution for the duration of a
-+ * sleep and then cancels the process's request when the last sleeper wakes,
-+ * which also undoes ours. It only does so when no other thread is sleeping,
-+ * so keep one thread asleep for the life of the process.
++ * The guest's 1 kHz PIT needs ~1 ms main-loop wake-ups, but Windows rounds waits
++ * to 15.6 ms (Linux guests with HZ=1000 panic: "IO-APIC + timer doesn't work").
++ * NtSetTimerResolution() alone does not last: clock_nanosleep() cancels the
++ * request when its last sleeper wakes, so keep one thread asleep forever.
 + */
 +static void *cosmo_win_timer_holder(void *opaque)
 +{

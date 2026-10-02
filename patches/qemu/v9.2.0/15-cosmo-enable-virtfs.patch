@@ -86,15 +86,11 @@ new file mode 100644
 index 0000000..fd04ab6
 --- /dev/null
 +++ b/hw/9pfs/9p-util-cosmo.c
-@@ -0,0 +1,191 @@
+@@ -0,0 +1,176 @@
 +/*
-+ * 9p utilities (Cosmopolitan implementation)
-+ *
-+ * The same binary runs on Linux, macOS and Windows, so everything that
-+ * differs between hosts is decided at run time.  Only Linux has the extended
-+ * attributes that the "mapped-xattr" security model and the guest's xattr
-+ * calls need (reached with raw system calls); the "mapped-file" and "none"
-+ * models need nothing beyond POSIX file calls and work on every host.
++ * 9p utilities (Cosmopolitan implementation). One binary runs on every host, so
++ * host differences are decided at run time. Only Linux has the xattrs that
++ * "mapped-xattr" needs; "mapped-file" and "none" need only POSIX calls.
 + *
 + * This work is licensed under the terms of the GNU GPL, version 2 or later.
 + * See the COPYING file in the top-level directory.
@@ -107,10 +103,7 @@ index 0000000..fd04ab6
 +#include <cosmo.h>
 +#include <libc/sysv/consts/nr.h>
 +
-+/*
-+ * errno values are run-time values: the same as Linux's on Linux, different on
-+ * macOS and Windows.  The guest is always Linux, so translate.
-+ */
++/* errno values differ on macOS and Windows; the guest is always Linux, so translate */
 +int cosmo_errno_to_dotl(int err)
 +{
 +    int i;
@@ -145,11 +138,7 @@ index 0000000..fd04ab6
 +    return err;
 +}
 +
-+/*
-+ * Extended attributes: Linux system calls on the "/proc/self/fd/<dirfd>/name"
-+ * path (the l* variants do not follow a final symlink).  Other hosts get
-+ * ENOTSUP; the callers turn that into a failed guest xattr call.
-+ */
++/* Linux xattr system calls on "/proc/self/fd/<dirfd>/name" (l* variants do not follow a final symlink); ENOTSUP elsewhere */
 +static ssize_t cosmo_lgetxattr(const char *path, const char *name,
 +                               void *value, size_t size)
 +{
@@ -254,11 +243,7 @@ index 0000000..fd04ab6
 +    return ret;
 +}
 +
-+/*
-+ * mknodat() exists as a system call on Linux only.  Elsewhere regular files
-+ * can still be created (which is all the mapped security models ask for) and
-+ * everything else, such as device nodes, is not supported.
-+ */
++/* mknodat() is Linux-only; elsewhere only regular files (all the mapped models need) */
 +int qemu_mknodat(int dirfd, const char *filename, mode_t mode, dev_t dev)
 +{
 +    int fd;
@@ -292,16 +277,12 @@ index 51c94b0..321ca86 100644
  
  #ifdef O_PATH
  #define O_PATH_9P_UTIL O_PATH
-@@ -21,6 +24,21 @@
+@@ -21,6 +24,17 @@
  #define O_PATH_9P_UTIL 0
  #endif
  
 +#ifdef __COSMOPOLITAN__
-+/*
-+ * Cosmopolitan's O_* flags are run-time values, and a flag the host OS does
-+ * not have is 0 or all ones (O_NOFOLLOW, O_NOATIME and others on Windows).
-+ * Map a missing flag to 0 so it can be OR-ed in and masked out safely.
-+ */
++/* A missing O_* flag is 0 or all ones (O_NOFOLLOW, O_NOATIME on Windows): map it to 0 so it can be OR-ed and masked */
 +static inline int host_oflag(unsigned flag)
 +{
 +    return (flag == (unsigned)-1) ? 0 : (int)flag;
@@ -314,7 +295,7 @@ index 51c94b0..321ca86 100644
  #if !defined(CONFIG_LINUX)
  
  /*
-@@ -55,11 +73,22 @@ static inline uint64_t host_dev_to_dotl_dev(dev_t dev)
+@@ -55,11 +69,19 @@ static inline uint64_t host_dev_to_dotl_dev(dev_t dev)
  {
  #ifdef CONFIG_LINUX
      return dev;
@@ -326,10 +307,7 @@ index 51c94b0..321ca86 100644
  }
  
 +#ifdef __COSMOPOLITAN__
-+/*
-+ * errno values are run-time values under Cosmopolitan: identical to Linux's
-+ * on Linux, different on macOS and Windows (9p-util-cosmo.c).
-+ */
++/* see 9p-util-cosmo.c */
 +int cosmo_errno_to_dotl(int err);
 +ssize_t cosmo_fgetxattr(int fd, const char *name, void *value, size_t size);
 +#endif
@@ -337,7 +315,7 @@ index 51c94b0..321ca86 100644
  /* Translates errno from host -> Linux if needed */
  static inline int errno_to_dotl(int err) {
  #if defined(CONFIG_LINUX)
-@@ -84,6 +113,8 @@ static inline int errno_to_dotl(int err) {
+@@ -84,6 +106,8 @@ static inline int errno_to_dotl(int err) {
      } else if (err == EOPNOTSUPP) {
          err = 95; /* ==EOPNOTSUPP on Linux */
      }
@@ -346,7 +324,7 @@ index 51c94b0..321ca86 100644
  #else
  #error Missing errno translation to Linux for this host system
  #endif
-@@ -92,6 +123,8 @@ static inline int errno_to_dotl(int err) {
+@@ -92,6 +116,8 @@ static inline int errno_to_dotl(int err) {
  
  #ifdef CONFIG_DARWIN
  #define qemu_fgetxattr(...) fgetxattr(__VA_ARGS__, 0, 0)
@@ -355,7 +333,7 @@ index 51c94b0..321ca86 100644
  #else
  #define qemu_fgetxattr fgetxattr
  #endif
-@@ -146,7 +179,8 @@ static inline int close_if_special_file(int fd)
+@@ -146,7 +172,8 @@ static inline int close_if_special_file(int fd)
  static inline int openat_dir(int dirfd, const char *name)
  {
      return qemu_openat(dirfd, name,
@@ -365,7 +343,7 @@ index 51c94b0..321ca86 100644
  }
  
  static inline int openat_file(int dirfd, const char *name, int flags,
-@@ -157,11 +191,12 @@ static inline int openat_file(int dirfd, const char *name, int flags,
+@@ -157,11 +184,12 @@ static inline int openat_file(int dirfd, const char *name, int flags,
  #ifndef CONFIG_DARWIN
  again:
  #endif
@@ -381,7 +359,7 @@ index 51c94b0..321ca86 100644
              /*
               * The client passed O_NOATIME but we lack permissions to honor it.
               * Rather than failing the open, fall back without O_NOATIME. This
-@@ -170,7 +205,7 @@ again:
+@@ -170,7 +198,7 @@ again:
               * all filesystems". In particular, NFS and other network
               * filesystems ignore it entirely.
               */

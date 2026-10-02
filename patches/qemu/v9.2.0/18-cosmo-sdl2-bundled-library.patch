@@ -1,19 +1,19 @@
 diff --git a/ui/sdl2-cosmo.c b/ui/sdl2-cosmo.c
-index 0e31066..a415ae5 100644
+index 7c3ea1c..b36308f 100644
 --- a/ui/sdl2-cosmo.c
 +++ b/ui/sdl2-cosmo.c
-@@ -5,7 +5,9 @@
-  * compile ui/sdl2*.c; the functions they declare are defined here as thin
-  * wrappers that forward to the function addresses found in the host's SDL2
-  * (SDL2.dll, libSDL2-2.0.0.dylib or libSDL2-2.0.so.0) when the display is
-- * initialized.  Every entry point goes through cosmo_dltramp(), which converts
-+ * initialized.  On Windows and macOS the executable also carries the official
-+ * SDL2 release library in its zip archive; it is extracted to the user's cache
-+ * directory (below) and loaded from there, so SDL2 need not be installed.  Every entry point goes through cosmo_dltramp(), which converts
-  * between the System V calling convention used here and the one the library
-  * uses (Microsoft x64 on Windows), as for Hypervisor.framework and WHPX.
+@@ -2,7 +2,9 @@
+  * SDL2 for Cosmopolitan builds: wrappers around the SDL2 functions found with
+  * cosmo_dlsym() in the host's SDL2 (SDL2.dll, libSDL2-2.0.0.dylib or
+  * libSDL2-2.0.so.0), called through cosmo_dltramp() (System V to Microsoft x64
+- * where needed). The SDL headers are only used to compile ui/sdl2*.c.
++ * where needed). The SDL headers are only used to compile ui/sdl2*.c. On Windows
++ * and macOS an embedded official SDL2 release, extracted to the user cache, is
++ * tried first.
   *
-@@ -22,8 +24,14 @@
+  * Only the 2D renderer path is covered; SDL calls nothing back here, so no
+  * reverse trampolines are needed.
+@@ -16,8 +18,14 @@
  #include "ui/sdl2.h"
  #include "qapi/error.h"
  
@@ -28,7 +28,7 @@ index 0e31066..a415ae5 100644
  
  /* X(ret, name, (params), (args)) for functions returning a value, XV for void */
  #define SDL2_COSMO_FUNCS(X, XV) \
-@@ -93,13 +101,226 @@ SDL2_COSMO_FUNCS(X, XV)
+@@ -87,13 +95,214 @@ SDL2_COSMO_FUNCS(X, XV)
  #undef X
  #undef XV
  
@@ -50,11 +50,8 @@ index 0e31066..a415ae5 100644
 +}
 +
 +/*
-+ * The per-user cache directory, where each OS expects a program's cache:
-+ *   Windows  %LOCALAPPDATA%\qemu-cosmo\Cache
-+ *   macOS    ~/Library/Caches/qemu-cosmo
-+ *   other    $XDG_CACHE_HOME/qemu-cosmo, or ~/.cache/qemu-cosmo
-+ * NULL if the user's home cannot be found.
++ * Per-user cache directory: %LOCALAPPDATA%\qemu-cosmo\Cache, ~/Library/Caches/qemu-cosmo,
++ * or $XDG_CACHE_HOME (~/.cache) /qemu-cosmo. NULL if there is no home.
 + */
 +static char *sdl2_user_cache_dir(void)
 +{
@@ -93,10 +90,8 @@ index 0e31066..a415ae5 100644
 +}
 +
 +/*
-+ * A library that gets loaded into the process must not come from a directory
-+ * someone else could write to: require that the directory is ours, is not a
-+ * symlink, and is closed to other users.  (Windows keeps %LOCALAPPDATA% private
-+ * with its ACLs.)
++ * A loaded library must not come from a directory others can write: require it
++ * to be ours, not a symlink and closed to others (Windows relies on ACLs).
 + */
 +static bool sdl2_dir_is_private(const char *dir)
 +{
@@ -155,31 +150,24 @@ index 0e31066..a415ae5 100644
 +}
 +
 +/*
-+ * Makes the embedded SDL2 library available as a file and returns its path
-+ * (to be freed), or NULL with the reason appended to @why.  The file is named
-+ * after its SHA-256, so different versions never collide, and is only reused if
-+ * its contents still match: a changed or planted file is replaced.  It is
-+ * written under a temporary name and renamed, so a concurrent QEMU never sees a
-+ * partial file.
-+ *
-+ * QEMU_COSMO_SDL2_BUNDLE=<file> stands in for the embedded library (the build
-+ * embeds none on Linux); it exists so this code can be tested there.
++ * Extracts the embedded SDL2 library and returns its path (to be freed), or NULL
++ * with the reason appended to @why. The file is named by SHA-256 and reused only
++ * if its contents match (a changed or planted file is replaced); it is written
++ * under a temporary name and renamed so a concurrent QEMU never sees a partial file.
 + */
 +static char *sdl2_bundled_library(GString *why)
 +{
-+    const char *override = getenv("QEMU_COSMO_SDL2_BUNDLE");
 +    const char *embedded = IsWindows() ? SDL2_EMBEDDED_WINDOWS :
 +                           IsXnu() ? SDL2_EMBEDDED_MACOS : NULL;
-+    const char *ext = IsWindows() ? ".dll" : IsXnu() ? ".dylib" : ".so";
++    const char *ext = IsWindows() ? ".dll" : ".dylib";
 +    char *src = NULL, *data = NULL, *hex = NULL, *cache, *dir = NULL;
 +    char *final = NULL, *tmp = NULL;
 +    gsize len;
 +
-+    if (override && *override) {
-+        src = g_strdup(override);
-+    } else if (embedded) {
-+        src = qemu_find_file(QEMU_FILE_TYPE_BIOS, embedded);
++    if (!embedded) {
++        return NULL;
 +    }
++    src = qemu_find_file(QEMU_FILE_TYPE_BIOS, embedded);
 +    if (!src) {
 +        return NULL;
 +    }
@@ -257,7 +245,7 @@ index 0e31066..a415ae5 100644
          NULL
      };
      static const char *const unix_names[] = {
-@@ -110,8 +331,7 @@ static void *sdl2_open(const char **tried)
+@@ -104,8 +313,7 @@ static void *sdl2_open(const char **tried)
      void *lib;
  
      for (; *names; names++) {
@@ -267,15 +255,11 @@ index 0e31066..a415ae5 100644
          if (lib) {
              return lib;
          }
-@@ -119,21 +339,37 @@ static void *sdl2_open(const char **tried)
+@@ -113,21 +321,33 @@ static void *sdl2_open(const char **tried)
      return NULL;
  }
  
-+/*
-+ * The embedded library (Windows and macOS) comes first, then the host's own
-+ * SDL2.  On Windows "SDL2.dll" by name is searched for in the current directory
-+ * and PATH, where anyone could have put a file, so it must not win.
-+ */
++/* Embedded library first: on Windows "SDL2.dll" by name is searched for in the current directory and PATH */
  bool sdl2_cosmo_load(Error **errp)
  {
      static bool loaded;

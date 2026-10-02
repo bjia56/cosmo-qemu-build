@@ -1,14 +1,13 @@
 # shellcheck shell=bash
 # SPDX-License-Identifier: MIT
-# Static dependencies (zlib, libpng, libjpeg-turbo, pcre2, nettle, gnutls, bzip2, zstd, libffi, glib, pixman, libslirp) built into a per-architecture sysroot.
-# Sourced by scripts/build.sh; relies on the variables it defines.
+# Static dependencies built into a per-architecture sysroot. Sourced by scripts/build.sh.
 
 exe_wrapper_for() {
     local var="EXE_WRAPPER_$1"
     if [ -n "${!var:-}" ]; then
         echo "${!var}"
     elif [ "$1" = "x86_64" ]; then
-        # x86_64 outputs are APE files; sh knows how to start them
+        # APE files are started through sh
         echo "sh"
     else
         echo "qemu-$1-static"
@@ -27,12 +26,11 @@ build_deps() {
     mkdir -p "${B}/zlib" && cp -r "${SRC_DIR}/zlib-${ZLIB_VERSION}/." "${B}/zlib"
     run_logged "${arch}-zlib" bash -c "cd '${B}/zlib' && ./configure --prefix='${S}' --static && make -j${JOBS} && make install"
 
-    # libpng (screendump -f png); needs the zlib built above
+    # libpng (screendump -f png)
     mkdir -p "${B}/libpng" && cd "${B}/libpng"
     run_logged "${arch}-libpng" bash -c "CPPFLAGS='-I${S}/include' LDFLAGS='-L${S}/lib' '${SRC_DIR}/libpng-${LIBPNG_VERSION}/configure' --prefix='${S}' --host=${host_triplet} --disable-shared --enable-static --disable-tools --disable-hardware-optimizations && make -j${JOBS} && make install"
 
-    # libjpeg-turbo (VNC lossy encoding). CMake only; no SIMD (assembler), no
-    # TurboJPEG API or Java, and a static library only.
+    # libjpeg-turbo (VNC JPEG), without SIMD
     run_logged "${arch}-libjpeg-turbo-configure" cmake -S "${SRC_DIR}/libjpeg-turbo-${LIBJPEG_TURBO_VERSION}" -B "${B}/libjpeg-turbo" -G Ninja \
         -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR="${arch}" \
         -DCMAKE_C_COMPILER="${cc}" -DCMAKE_AR="$(command -v "${ar}")" -DCMAKE_RANLIB="$(command -v "${ranlib}")" \
@@ -45,14 +43,11 @@ build_deps() {
     mkdir -p "${B}/pcre2" && cd "${B}/pcre2"
     run_logged "${arch}-pcre2" bash -c "'${SRC_DIR}/pcre2-${PCRE2_VERSION}/configure' --prefix='${S}' --host=${host_triplet} --disable-shared --enable-static && make -j${JOBS} && make install"
 
-    # nettle: with its bundled mini-gmp (no GMP), which makes hogweed, the public-key half that
-    # gnutls needs; and no assembler, which cosmocc may not take
+    # nettle: bundled mini-gmp provides hogweed, which gnutls needs; no assembler
     mkdir -p "${B}/nettle" && cd "${B}/nettle"
     run_logged "${arch}-nettle" bash -c "'${SRC_DIR}/nettle-${NETTLE_VERSION}/configure' --prefix='${S}' --libdir='${S}/lib' --host=${host_triplet} --disable-shared --enable-static --enable-mini-gmp --disable-assembler --disable-documentation --disable-openssl && make -j${JOBS} && make install"
 
-    # gnutls (TLS): only the library, with the nettle built above (its mini-gmp, hence
-    # --with-nettle-mini) and its own copies of libtasn1 and libunistring. No assembly,
-    # trust store, PKCS#11, compression or hardware acceleration.
+    # gnutls: library only
     mkdir -p "${B}/gnutls" && cd "${B}/gnutls"
     run_logged "${arch}-gnutls-configure" env PKG_CONFIG_PATH="${S}/lib/pkgconfig" PKG_CONFIG_LIBDIR="${S}/lib/pkgconfig" \
         CPPFLAGS="-I${S}/include" LDFLAGS="-L${S}/lib" \
@@ -62,31 +57,27 @@ build_deps() {
         --disable-doc --disable-tests --disable-tools --disable-cxx --disable-guile --disable-nls --disable-libdane \
         --disable-hardware-acceleration --disable-openssl-compatibility --disable-ktls --disable-gtk-doc --disable-rpath
     run_logged "${arch}-gnutls" bash -c "make -j${JOBS} -C gl && make -j${JOBS} -C lib && make -C lib install"
-    # libgnutls.a needs hogweed and nettle after it, and meson drops the extra -l flags of
-    # gnutls.pc: list hogweed in nettle.pc, which QEMU's link uses as well
+    # meson drops gnutls.pc's extra -l flags, so list hogweed in nettle.pc instead
     sed -i 's/^Libs: -L\${libdir} -lnettle/Libs: -L\${libdir} -lhogweed -lnettle/' "${S}/lib/pkgconfig/nettle.pc"
     grep -q -- '-lhogweed -lnettle' "${S}/lib/pkgconfig/nettle.pc" || die "could not add hogweed to nettle.pc"
 
-    # bzip2 (only the library; it builds in the source tree, so use a copy)
+    # bzip2 and zstd build in the source tree, so use copies
     mkdir -p "${B}/bzip2" "${S}/include" "${S}/lib" && cp -r "${SRC_DIR}/bzip2-${BZIP2_VERSION}/." "${B}/bzip2"
     run_logged "${arch}-bzip2" bash -c "cd '${B}/bzip2' && make -j${JOBS} CC='${cc}' AR='${ar}' RANLIB='${ranlib}' libbz2.a && cp bzlib.h '${S}/include/' && cp libbz2.a '${S}/lib/'"
 
-    # zstd (only the library; it builds in the source tree, so use a copy).
-    # Its BMI2 assembly is left out: cosmocc rejects the (empty) object file.
+    # zstd's BMI2 assembly is left out: cosmocc rejects the (empty) object file
     mkdir -p "${B}/zstd" && cp -r "${SRC_DIR}/zstd-${ZSTD_VERSION}/." "${B}/zstd"
     run_logged "${arch}-zstd" bash -c "cd '${B}/zstd/lib' && make -j${JOBS} ZSTD_NO_ASM=1 CC='${cc}' AR='${ar}' PREFIX='${S}' libzstd.a libzstd.pc && make ZSTD_NO_ASM=1 CC='${cc}' AR='${ar}' PREFIX='${S}' install-static install-pc install-includes"
 
-    # libffi (static trampolines need a raw mmap of the exec file, unsupported here)
-    # The Ubuntu orig tarball has no configure script, so generate it (in a copy,
-    # since the source tree is shared by the architectures)
+    # libffi: static trampolines need a raw mmap of the exec file, unsupported here.
+    # The orig tarball has no configure script: generate it in a per-arch copy.
     mkdir -p "${B}/libffi-src" && cp -r "${SRC_DIR}/libffi-${LIBFFI_VERSION}/." "${B}/libffi-src"
     run_logged "${arch}-libffi-autoreconf" bash -c "cd '${B}/libffi-src' && autoreconf -fi"
     mkdir -p "${B}/libffi" && cd "${B}/libffi"
     run_logged "${arch}-libffi" bash -c "'${B}/libffi-src/configure' --prefix='${S}' --host=${host_triplet} --disable-shared --enable-static --disable-exec-static-tramp --disable-docs && make -j${JOBS} && make install"
     unset CC AR RANLIB
 
-    # glib: only glib, gmodule and gthread are needed by QEMU. gio does not
-    # compile against cosmocc, so build those targets and stage them by hand.
+    # glib: gio does not compile against cosmocc, so build only the needed targets and stage them by hand
     local cross="${B}/cross.txt" glibb="${B}/glib"
     cat > "${cross}" <<EOF
 [binaries]
@@ -138,7 +129,7 @@ EOF
         cp "${glibb}/meson-private/${pc}.pc" "${S}/lib/pkgconfig/"
     done
 
-    # pixman (display and framebuffer code in the system emulators)
+    # pixman
     if [ -n "${SYSTEM_TARGETS}" ]; then
         run_logged "${arch}-pixman-configure" env PKG_CONFIG_LIBDIR="${S}/lib/pkgconfig" \
             meson setup "${B}/pixman" "${SRC_DIR}/pixman-${PIXMAN_VERSION}" --cross-file "${cross}" \
@@ -146,7 +137,7 @@ EOF
             -Dtests=disabled -Ddemos=disabled -Dgtk=disabled -Dlibpng=disabled \
             -Dopenmp=disabled -Dtimers=false -Dgnuplot=false
         run_logged "${arch}-pixman-build" ninja -C "${B}/pixman" -j"${JOBS}" install
-        # libslirp (user-mode networking, -netdev user); needs only glib
+        # libslirp (-netdev user)
         run_logged "${arch}-libslirp-configure" env PKG_CONFIG_LIBDIR="${S}/lib/pkgconfig" \
             meson setup "${B}/libslirp" "${SRC_DIR}/libslirp-v${LIBSLIRP_VERSION}" --cross-file "${cross}" \
             --prefix="${S}" --default-library=static --wrap-mode=nodownload

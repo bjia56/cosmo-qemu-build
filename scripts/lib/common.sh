@@ -1,7 +1,6 @@
 # shellcheck shell=bash
 # SPDX-License-Identifier: MIT
-# Helpers: logging, downloads, git clones, patches.
-# Sourced by scripts/build.sh; relies on the variables it defines.
+# Helpers. Sourced by scripts/build.sh.
 
 die() { echo "Error: $*" >&2; exit 1; }
 

@@ -1,9 +1,7 @@
 # shellcheck shell=bash
 # SPDX-License-Identifier: MIT
-# License and third-party notices, embedded in every executable.
-# Sourced by scripts/build.sh; relies on the variables it defines.
+# License and third-party notices, embedded in every executable. Sourced by scripts/build.sh.
 
-# write_notices <output file>
 write_notices() {
     local out=$1 entry name file
     {
@@ -63,12 +61,6 @@ write_notices() {
     } > "${out}"
 }
 
-# prepare_licenses
-#
-# COPYING and THIRD_PARTY_NOTICES.txt are stored inside every executable
-# (Cosmopolitan serves the zip archive appended to it), so nothing has to be
-# distributed next to the binaries:
-#   unzip -p qemu-img.com COPYING
 prepare_licenses() {
     LICENSE_DIR="${BUILD_DIR}/licenses"
     mkdir -p "${LICENSE_DIR}"
@@ -76,7 +68,6 @@ prepare_licenses() {
     write_notices "${LICENSE_DIR}/THIRD_PARTY_NOTICES.txt"
 }
 
-# embed_licenses <executable>
 embed_licenses() {
     (cd "${LICENSE_DIR}" && zip -q "$1" COPYING THIRD_PARTY_NOTICES.txt)
     python3 - "$1" <<'PYEOF'

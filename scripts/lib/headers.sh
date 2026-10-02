@@ -1,14 +1,11 @@
 # shellcheck shell=bash
 # SPDX-License-Identifier: MIT
-# Staging of the header files QEMU needs and the sysroot does not have.
-# Sourced by scripts/build.sh; relies on the variables it defines.
+# Staging of headers the sysroot lacks. Sourced by scripts/build.sh.
 
 # stage_kernel_headers <arch> <sysroot>
 #
-# QEMU's vendored linux/kvm.h includes the base kernel headers (linux/types.h,
-# linux/ioctl.h, asm/*, ...), which QEMU expects the host's kernel headers
-# package to provide and cosmocc does not ship. Stage only the base headers,
-# never kvm.h: QEMU's vendored copy has to win.
+# QEMU's vendored linux/kvm.h needs the base kernel headers, which cosmocc lacks.
+# Never stage kvm.h: QEMU's vendored copy has to win.
 stage_kernel_headers() {
     local arch=$1 S=$2
     local var="KERNEL_HEADERS_${arch}" root="" asm="" cand
@@ -32,7 +29,7 @@ stage_kernel_headers() {
     for f in ioctl types const stddef posix_types; do
         cp "${root}/linux/${f}.h" "${S}/include/linux/"
     done
-    # QEMU's vendored asm/kvm.h includes others (asm/ptrace.h on arm64, ...)
+    # QEMU's asm/kvm.h includes others (asm/ptrace.h on arm64)
     for f in "${asm}"/*.h; do
         case "$(basename "$f")" in
             kvm*.h) ;;
@@ -44,14 +41,10 @@ stage_kernel_headers() {
 
 # stage_whp_headers <sysroot>
 #
-# QEMU's WHPX code includes the Windows Hypervisor Platform headers. Microsoft
-# publishes them under the MIT license (see the header of each file) in
-# https://github.com/MicrosoftDocs/Virtualization-Documentation; they are fetched
-# from a pinned commit and checked by SHA-256. They only need a few base Windows
-# types and macros, which compat/whp/minwindef.h provides instead of a full
-# Windows SDK. They get their own directory, so no generic Windows header name is
-# visible to QEMU's or glib's configure probes. The files are named in mixed case
-# and include each other that way, while QEMU includes them in lower case.
+# Microsoft's MIT-licensed WHP headers (MicrosoftDocs/Virtualization-Documentation,
+# pinned commit). compat/whp/minwindef.h supplies the base Windows types they need.
+# A private directory keeps generic Windows header names away from configure probes.
+# They include each other in mixed case, QEMU in lower case, hence both copies.
 stage_whp_headers() {
     local S=$1 f
     echo "  staging WHP headers..."
@@ -60,7 +53,7 @@ stage_whp_headers() {
     done
     mkdir -p "${S}/include/whp"
     cp "${PROJECT_ROOT}"/compat/whp/*.h "${S}/include/whp/"
-    # the other Windows SDK headers they include; minwindef.h covers all of them
+    # other SDK headers they include; minwindef.h covers them
     for f in apiset.h apisetcconv.h winapifamily.h; do
         echo "/* intentionally empty: see minwindef.h */" > "${S}/include/whp/${f}"
     done
@@ -72,14 +65,9 @@ stage_whp_headers() {
 
 # stage_hvf_headers <sysroot>
 #
-# QEMU's HVF accelerator includes <Hypervisor/Hypervisor.h>. Hypervisor.framework
-# cannot be linked into a Cosmopolitan program (it is loaded at run time), and its
-# own headers cannot be used with cosmocc (they need clang and the Darwin system
-# headers), so compat/hvf provides just the types, constants and prototypes QEMU
-# uses, with every call going through a table filled in by cosmo_dlopen(). The
-# system register identifiers are the Arm architectural encodings, which QEMU's
-# own table (hvf_sreg_match in target/arm/hvf/hvf.c) lists as
-# (CRn, CRm, op0, op1, op2); they are generated from that table.
+# Apple's own headers need clang and Darwin headers, so compat/hvf provides the
+# subset QEMU uses. The system register identifiers are generated from QEMU's
+# hvf_sreg_match table (target/arm/hvf/hvf.c).
 stage_hvf_headers() {
     local S=$1
     mkdir -p "${S}/include/hvf"
@@ -102,10 +90,7 @@ with open(sys.argv[2], "w") as f:
 PYEOF
 }
 
-# Cosmopolitan Libc's sscanf() lacks %[...] scansets. compat/scanf holds a
-# replacement (cosmo_sscanf, which patches/qemu/*/10-cosmo-sscanf-scansets and
-# patches/libslirp/*/02-cosmo-sscanf-scansets switch both source trees to);
-# copy it into each of them.
+# Copy the sscanf replacement (compat/scanf) into QEMU and libslirp; their 10-/02-cosmo-sscanf-scansets patches use it.
 stage_scanf_shim() {
     local c="${PROJECT_ROOT}/compat/scanf"
     local slirp="${SRC_DIR}/libslirp-v${LIBSLIRP_VERSION}/src"
@@ -116,12 +101,8 @@ stage_scanf_shim() {
 
 # stage_sdl2_headers <sysroot>
 #
-# QEMU's SDL display (-display sdl) is compiled against the SDL2 headers, but no
-# SDL library is linked: the host's SDL2 is loaded with cosmo_dlopen() when the
-# display starts (QEMU patch 17, ui/sdl2-cosmo.c). The headers come from the
-# source tarball, whose SDL_config.h selects the minimal configuration (no X11 or
-# other platform headers), and a pkg-config file with only cflags stands in for
-# SDL2's own.
+# Headers only: SDL2 is loaded at run time (QEMU patch 17). A cflags-only
+# pkg-config file stands in for SDL2's own.
 stage_sdl2_headers() {
     local S=$1
     echo "  staging SDL2 headers..."

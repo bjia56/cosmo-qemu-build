@@ -1,9 +1,7 @@
 # shellcheck shell=bash
 # SPDX-License-Identifier: MIT
-# Linking the per-architecture ELF files into fat APE binaries.
-# Sourced by scripts/build.sh; relies on the variables it defines.
+# Linking the per-architecture ELF files into fat APE binaries. Sourced by scripts/build.sh.
 
-# link_fat <program> <output>
 link_fat() {
     local program=$1 output=$2
     local ape_args=() elfs=() arch
@@ -19,24 +17,19 @@ link_fat() {
     private_loader "${output}"
 }
 
-# The executables use a loader of their own, so that the loader on Apple Silicon can
-# sign itself with the hypervisor entitlement (compat/ape). Two lines of the shell
-# script that apelink writes at the start of each file are edited, with
-# replacements of the same length so that no offset in the file changes: the
-# loader is stored as .q.ape-01 in ${TMPDIR:-$HOME} instead of apelink's default
-# path, and a loader found in PATH is never used. The build fails if the script
-# is not exactly what is expected. Change the loader's number when the loader
-# changes: a stored loader is reused as is.
+# Give the executables their own loader (see compat/ape): edit two lines of apelink's
+# header script with same-length replacements, so no file offset changes. The build fails
+# if the script is not as expected. Bump the loader number when the loader changes, since
+# a stored loader is reused as is.
 private_loader() {
     python3 - "$1" <<'PYEOF'
 import sys
 path = sys.argv[1]
 edits = (
-    # never use an "ape" found in PATH: replace the test (always false), so
-    # the "exec ape" after it can never run
+    # never use an "ape" from PATH
     (b'&& type ape >/dev/null 2>&1 && exec ape "$o" "$@"',
      b'&& false    >/dev/null 2>&1 && exec ape "$o" "$@"'),
-    # where the loader is stored (change the number with the loader)
+    # loader path
     (b't="${TMPDIR:-${HOME:-.}}/.ape-1.10"',
      b't="${TMPDIR:-${HOME:-.}}/.q.ape-01"'),
 )
@@ -53,10 +46,7 @@ with open(path, "r+b") as f:
 PYEOF
 }
 
-# prepare_loader_source
-#
-# A copy of cosmocc's macOS arm64 loader source that signs itself (compat/ape),
-# which link_fat hands to apelink.
+# Patched copy of cosmocc's macOS arm64 loader source (compat/ape) for apelink.
 prepare_loader_source() {
     [[ " ${ARCHES} " == *" aarch64 "* ]] || return 0
     APE_M1_SOURCE="${BUILD_DIR}/ape-m1.c"

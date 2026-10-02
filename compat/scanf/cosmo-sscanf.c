@@ -1,13 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 /*
- * sscanf() with %[...] scansets for Cosmopolitan Libc, whose own sscanf()
- * lacks them (every scanset makes it return -1).
- *
- * The format is walked one directive at a time. Scansets are handled here;
- * every other conversion is passed to libc's sscanf() as a one-directive
- * format followed by %n, which also reports how much input it consumed.
- * Whitespace, literals and %% behave as in C. Supported scanset syntax:
- * optional * and width, ^ negation, a leading ] as a member, and ranges.
+ * sscanf() with %[...] scansets (optional * and width, ^, leading ], ranges).
+ * Scansets are handled here; every other directive goes to libc's sscanf()
+ * with a trailing %n to learn how much input it consumed.
  */
 #include <ctype.h>
 #include <stdarg.h>
@@ -68,7 +63,6 @@ int cosmo_sscanf(const char *str, const char *fmt, ...)
         }
 
         if (*fmt != '[') {
-            /* length modifiers, then the conversion character */
             while (*fmt && strchr("hlLqjzt", *fmt)) {
                 fmt++;
             }

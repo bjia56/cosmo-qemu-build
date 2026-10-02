@@ -11,19 +11,15 @@
  #include "qemu/cosmo-linux-syscall.h"
  
  /*
-@@ -41,6 +45,58 @@
+@@ -41,6 +45,54 @@
      return cosmo_linux_syscall3(COSMO_NR_EVENTFD2, 0, 04000L | 02000000L, 0);
  #endif
  }
 +
 +/*
-+ * On Windows, Cosmopolitan's poll() cannot wait for data on a pipe: it peeks
-+ * the pipe and sleeps POLL_INTERVAL_MS (10 ms, which Windows rounds up to its
-+ * 15.6 ms timer tick). The main loop then noticed a notification only once
-+ * per tick, and every completed block request (a thread pool worker
-+ * notifying the main loop) cost one: reading a CD-ROM image took 15.6 ms per
-+ * 2 KiB. Sockets are waited on in WSAPoll() and wake up at once, so use a
-+ * connected loopback TCP pair there: fds[0] reads, fds[1] writes.
++ * On Windows, poll() on a pipe sleeps in 15.6 ms ticks, delaying every main-loop
++ * wake-up (CD-ROM reads cost 15.6 ms per 2 KiB). WSAPoll() wakes on sockets at
++ * once, so use a connected loopback TCP pair: fds[0] reads, fds[1] writes.
 + */
 +static bool cosmo_win_notifier_pair(int fds[2])
 +{
@@ -70,7 +66,7 @@
  #endif
  
  #ifdef CONFIG_EVENTFD
-@@ -75,6 +131,13 @@
+@@ -75,6 +127,13 @@
          if (errno != ENOSYS) {
              return -errno;
          }

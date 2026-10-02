@@ -1,21 +1,14 @@
 --- a/ape-m1.c
 +++ b/ape-m1.c
-@@ -43,6 +43,179 @@
+@@ -43,6 +43,169 @@
  #include <time.h>
  #include <unistd.h>
  
 +/*
-+ * cosmo-qemu-build: give this loader the hypervisor entitlement.
-+ *
-+ * Hypervisor.framework only works for a process whose executable carries the
-+ * com.apple.security.hypervisor entitlement, and the process a Cosmopolitan
-+ * program runs in is this loader. The loader is private to cosmo-qemu-build
-+ * (its file name is set when the executable is built), so it can be signed
-+ * without affecting anything else. At startup the loader asks the kernel for its
-+ * own entitlements; if the entitlement is missing and the loader file on disk
-+ * does not have it either, it copies itself, ad-hoc signs the copy with the
-+ * entitlement, renames the copy over the loader (running instances keep their
-+ * file) and starts again. This happens silently.
++ * cosmo-qemu-build: sign this loader with the com.apple.security.hypervisor entitlement
++ * (required by Hypervisor.framework). The loader file is private to this build, so signing
++ * it affects nothing else. If the process lacks the entitlement and the file does not have
++ * it either, copy, ad-hoc sign, rename over the loader and re-exec; silent on failure.
 + */
 +#include <mach-o/dyld.h>
 +#include <spawn.h>
@@ -43,8 +36,7 @@
 +
 +int csops(int pid, unsigned int ops, void *useraddr, size_t usersize);
 +
-+/* does this process have the entitlement? (asks the kernel, which has the
-+   signature's entitlements as a property list and in DER form) */
++/* asks the kernel, which has the entitlements as a plist and in DER form */
 +static int QsProcessHasEntitlement(void) {
 +  static char blob[65536];
 +  static const unsigned ops[] = {QS_CS_OPS_ENTITLEMENTS_BLOB,
@@ -54,7 +46,7 @@
 +  for (i = 0; i < sizeof(ops) / sizeof(ops[0]); ++i) {
 +    if (csops(getpid(), ops[i], blob, sizeof(blob)))
 +      continue;
-+    /* magic and length, both big endian, then the entitlements */
++    /* big-endian magic and length, then the entitlements */
 +    n = ((size_t)(unsigned char)blob[4] << 24) | ((size_t)(unsigned char)blob[5] << 16) |
 +        ((size_t)(unsigned char)blob[6] << 8) | (size_t)(unsigned char)blob[7];
 +    if (n >= 8 && n <= sizeof(blob) &&
@@ -64,8 +56,7 @@
 +  return 0;
 +}
 +
-+/* the temporary files are created exclusively and never through a symlink, so a
-+   shared TMPDIR cannot be used to overwrite other files */
++/* exclusive, no symlinks: a shared TMPDIR must not allow overwriting other files */
 +static int QsWriteFile(const char *path, const void *data, size_t size) {
 +  int fd, ok;
 +  if ((fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600)) == -1)
@@ -114,7 +105,6 @@
 +  return WIFEXITED(status) && WEXITSTATUS(status) == 0 ? 0 : -1;
 +}
 +
-+/* does the file have the entitlement in its signature? (asks codesign) */
 +static int QsFileHasEntitlement(const char *path) {
 +  static char out[65536];
 +  size_t n = 0;
@@ -158,7 +148,7 @@
 +  if (_NSGetExecutablePath(path, &size) || !realpath(path, self))
 +    return;
 +  if (QsFileHasEntitlement(self))
-+    return; /* signed already; nothing more to do from here */
++    return; /* signed already */
 +  snprintf(tmp, sizeof(tmp), "%s.tmp.%d", self, (int)getpid());
 +  snprintf(plist, sizeof(plist), "%s.plist.%d", self, (int)getpid());
 +  char *const cmd[] = {"/usr/bin/codesign", "--force", "-s", "-",
@@ -180,7 +170,7 @@
  #define pagesz 16384
  /* maximum path size that cosmo can take */
  #define PATHSIZE       (PATH_MAX < 1024 ? PATH_MAX : 1024)
-@@ -943,6 +1116,8 @@
+@@ -943,6 +1106,8 @@
    union ElfEhdrBuf *ebuf;
    char *p, *pe, *exe, *prog, *execfn;
  

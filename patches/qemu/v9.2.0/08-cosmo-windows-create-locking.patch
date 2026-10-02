@@ -12,19 +12,15 @@ index 06e418e..2e983e9 100644
  #include "qapi/error.h"
  #include "qemu/cutils.h"
  #include "qemu/error-report.h"
-@@ -2932,6 +2935,18 @@ raw_co_create(BlockdevCreateOptions *options, Error **errp)
+@@ -2932,6 +2935,14 @@ raw_co_create(BlockdevCreateOptions *options, Error **errp)
      }
  
      /* Step two: Check that nobody else has taken conflicting locks */
 +#ifdef __COSMOPOLITAN__
 +    if (IsWindows()) {
-+        /*
-+         * Cosmopolitan emulates F_GETLK with LockFileEx(), which treats the
-+         * locks taken in step one by this very fd as conflicting, so the
-+         * check always fails ("Failed to get \"resize\" lock"). Windows
-+         * QEMU does no image locking (file-win32.c), and "locking=auto"
-+         * already means off here (no OFD locks), so skip the check.
-+         */
++        /* Cosmopolitan's F_GETLK (LockFileEx) counts this fd's own locks as
++         * conflicts, so the check always fails; Windows QEMU does no image
++         * locking and locking=auto is already off here. */
 +        result = 0;
 +    } else
 +#endif

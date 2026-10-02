@@ -2,16 +2,12 @@ diff --git a/util/qemu-thread-posix.c b/util/qemu-thread-posix.c
 index b2e26e2..d37a525 100644
 --- a/util/qemu-thread-posix.c
 +++ b/util/qemu-thread-posix.c
-@@ -564,6 +564,15 @@ void qemu_thread_create(QemuThread *thread, const char *name,
+@@ -564,6 +564,11 @@ void qemu_thread_create(QemuThread *thread, const char *name,
          pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
      }
  
 +#ifdef __COSMOPOLITAN__
-+    /*
-+     * Cosmopolitan's default thread stack is 64 KiB, glibc's is 8 MiB.  Some
-+     * threads need far more than that (the VNC worker keeps a 100 KiB
-+     * VncState on its stack).  The pages are only touched when used.
-+     */
++    /* default is 64 KiB; the VNC worker keeps a 100 KiB VncState on its stack */
 +    pthread_attr_setstacksize(&attr, 2 * 1024 * 1024);
 +#endif
 +

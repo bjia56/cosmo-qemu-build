@@ -1,14 +1,10 @@
 /* SPDX-License-Identifier: MIT */
 /*
- * Just enough of the Windows base types and macros for the Windows Hypervisor
- * Platform headers (WinHvPlatform.h, WinHvEmulation.h) to compile under
- * cosmopolitan. They include apiset.h, apisetcconv.h, minwindef.h and
- * winapifamily.h from the Windows SDK; this stands in for all four (the other
- * three are staged as empty files by scripts/lib/headers.sh).
+ * Stands in for the Windows SDK headers the WHP headers include (apiset.h,
+ * apisetcconv.h, minwindef.h, winapifamily.h; the others are staged empty).
  *
- * WINAPI is empty on purpose: WHP entry points are called through pointers
- * that cosmo_dltramp() has already adapted to the System V convention.
- * CALLBACK is the Microsoft x64 convention, because Windows calls it.
+ * WINAPI is empty because WHP entry points are called through cosmo_dltramp()
+ * pointers (System V); CALLBACK is ms_abi because Windows calls it.
  */
 #ifndef COSMO_WHP_MINWINDEF_H
 #define COSMO_WHP_MINWINDEF_H
@@ -32,7 +28,6 @@ typedef struct _GUID { uint32_t Data1; uint16_t Data2; uint16_t Data3; uint8_t D
 typedef int DEVICE_POWER_STATE;
 #define ANYSIZE_ARRAY 1
 
-/* SAL annotations carry no meaning for the compiler */
 #define _In_
 #define _In_opt_
 #define _Out_
@@ -65,7 +60,6 @@ typedef int DEVICE_POWER_STATE;
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 #endif
 
-/* the WHP headers ask winapifamily.h which API family they are being built for */
 #define WINAPI_PARTITION_DESKTOP 1
 #define WINAPI_FAMILY_PARTITION(x) 1
 

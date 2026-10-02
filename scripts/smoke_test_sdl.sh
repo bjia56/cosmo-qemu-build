@@ -1,9 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
-# Opens the guest's display in an SDL window on a virtual X server and checks the
-# window exists. The emulator loads the host's SDL2 at run time, so this needs
-# libSDL2 (Ubuntu: libsdl2-2.0-0) plus Xvfb and xdotool; without them it skips.
-#
+# Checks that -display sdl opens a window on Xvfb. Needs the host's libSDL2, Xvfb and
+# xdotool; skips without them.
 # Usage: ./scripts/smoke_test_sdl.sh "sh /path/to/qemu-system-x86_64.com"
 
 set -eu

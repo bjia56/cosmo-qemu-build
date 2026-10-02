@@ -1,46 +1,19 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
-# Build script for qemu-img and the QEMU system emulators with Cosmopolitan libc
-#
-# This script builds QEMU separately for x86_64 and aarch64 hosts using the
-# arch-specific Cosmopolitan compilers, then uses apelink to combine the two
-# into a single fat binary per program that runs on multiple platforms.
-#
-# Outputs:
-#   out/qemu-img.com                         qemu-img
-#   out/qemu-system-<guest>.com              one system emulator per guest
-#                                            architecture, with its firmware
-#                                            embedded in /zip; KVM is compiled
-#                                            in where the guest matches the host
-#                                            architecture, WHPX (x86_64) and HVF
-#                                            (aarch64) for Windows and Apple
-#                                            Silicon, and TCG everywhere
-#
-# COPYING and THIRD_PARTY_NOTICES.txt are embedded in each executable's zip
-# archive (unzip -p qemu-img.com COPYING).
-#
-# The emulators pick an accelerator at run time (-machine accel=kvm:tcg): KVM
-# only works on Linux hosts where /dev/kvm is usable and the guest architecture
-# matches the host's, WHPX on Windows with the Hypervisor Platform enabled, HVF
-# on Apple Silicon; otherwise QEMU falls back to TCG.
-#
-# QEMU needs glib (which needs libffi, pcre2 and a libintl), pixman and zlib.
-# None of those are provided by cosmocc, so they are built from source into a
-# per-architecture static sysroot first.
+# Builds qemu-img and the QEMU system emulators for x86_64 and aarch64 with Cosmopolitan
+# libc and joins both architectures into one fat APE per program (apelink).
+# Outputs: out/qemu-img.com and out/qemu-system-<guest>.com (firmware embedded in /zip).
+# Dependencies cosmocc lacks (glib, pixman, ...) are built into a per-architecture sysroot first.
 #
 # Requirements (a Linux build host with bash 4 or later):
 #   - cosmocc compiler toolchain (https://cosmo.zip/pub/cosmocc/), tested with
 #     4.0.2; the macOS loader patch (compat/ape) is written for that release
 #   - git, curl, tar, sed, make, patch, zip, bzip2, ninja, python3, sha256sum,
 #     meson (>= 1.5), pkg-config
-#   - qemu-aarch64-static, to run aarch64 configure-time probes
-#     (or set EXE_WRAPPER_aarch64 to another wrapper)
-#   - Linux kernel headers for each host architecture, for QEMU's KVM code:
-#     linux-libc-dev (x86_64) and linux-libc-dev-arm64-cross (aarch64), or point
-#     KERNEL_HEADERS_<arch> at a directory containing linux/, asm/ and asm-generic/
-#
-# Usage:
-#   ./scripts/build.sh
+#   - qemu-aarch64-static for aarch64 configure-time probes (or EXE_WRAPPER_aarch64)
+#   - Linux kernel headers per host architecture (for KVM): linux-libc-dev and
+#     linux-libc-dev-arm64-cross, or KERNEL_HEADERS_<arch> pointing at a directory
+#     with linux/, asm/ and asm-generic/
 #
 # Optional environment:
 #   JOBS                 parallel build jobs (default: nproc)
@@ -56,11 +29,8 @@
 #   QEMU_REPO            QEMU git URL
 #   GLIB_REPO            glib git URL
 #   WHP_HEADERS_URL      where the Windows Hypervisor Platform headers are fetched
-#   (BUILD_DIR and OUT_DIR may be relative; they are made absolute)
 
-# The steps live in scripts/lib/: common (helpers), toolchain, headers, deps,
-# firmware, qemu, link and notices. This file holds the configuration and runs
-# them in order.
+# The steps live in scripts/lib/.
 
 set -euo pipefail
 
@@ -68,7 +38,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="${BUILD_DIR:-${PROJECT_ROOT}/build}"
 OUT_DIR="${OUT_DIR:-${PROJECT_ROOT}/out}"
-# the build changes directories a lot, so work with absolute paths
 mkdir -p "${BUILD_DIR}" "${OUT_DIR}"
 BUILD_DIR="$(cd "${BUILD_DIR}" && pwd)"
 OUT_DIR="$(cd "${OUT_DIR}" && pwd)"
@@ -96,9 +65,7 @@ PROXY_LIBINTL_VERSION="0.4"
 PROXY_LIBINTL_COMMIT="c03e1a74b17fa7ec467e110130775409e4828a4c"
 PROXY_LIBINTL_REPO="https://github.com/frida/proxy-libintl.git"
 
-# The small libraries come from the Ubuntu archive (the "orig" tarball of the
-# newest release's source package), with no fallback mirror. Versions follow the
-# newest Ubuntu series; the tarballs are verified by SHA-256.
+# Small libraries: the Ubuntu archive's "orig" tarballs, verified by SHA-256 (no fallback mirror).
 UBUNTU_POOL="${UBUNTU_POOL:-https://archive.ubuntu.com/ubuntu/pool/main}"
 
 # Ubuntu repacks zlib; the tarball unpacks to zlib-<ZLIB_ORIG_VERSION>
@@ -116,13 +83,10 @@ LIBFFI_VERSION="3.8.0"
 LIBFFI_URL="${UBUNTU_POOL}/libf/libffi/libffi_${LIBFFI_VERSION}.orig.tar.gz"
 LIBFFI_SHA256="bf40d752d8f5fd4505bcd1c7d4208ea87fd12c91f087e359651c776748352dc0"
 
-# Ubuntu's source package for libpng is libpng1.6; the tarball unpacks to libpng-<version>
 LIBPNG_VERSION="1.6.58"
 LIBPNG_URL="${UBUNTU_POOL}/libp/libpng1.6/libpng1.6_${LIBPNG_VERSION}.orig.tar.gz"
 LIBPNG_SHA256="a9d4df463d36a6e5f9c29bd6f4967312d17e996c1854f3511f833924eb1993cf"
 
-# nettle provides QEMU's crypto (LUKS, qcow2 encryption) and, with its bundled mini-gmp, the public-key
-# code (hogweed) that gnutls needs
 NETTLE_VERSION="3.10.2"
 NETTLE_URL="${UBUNTU_POOL}/n/nettle/nettle_${NETTLE_VERSION}.orig.tar.gz"
 NETTLE_SHA256="fe9ff51cb1f2abb5e65a6b8c10a92da0ab5ab6eaf26e7fc2b675c45f1fb519b5"
@@ -131,7 +95,6 @@ BZIP2_VERSION="1.0.8"
 BZIP2_URL="${UBUNTU_POOL}/b/bzip2/bzip2_${BZIP2_VERSION}.orig.tar.gz"
 BZIP2_SHA256="ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269"
 
-# Ubuntu's source package for zstd is libzstd; the tarball unpacks to zstd-<version>
 ZSTD_VERSION="1.5.7"
 ZSTD_URL="${UBUNTU_POOL}/libz/libzstd/libzstd_${ZSTD_VERSION}+dfsg.orig.tar.xz"
 ZSTD_SHA256="0c092ef267edce57ba7f3f2645c861f72eaf5e76273c6c3632869423464b90a5"
@@ -155,21 +118,19 @@ SDL2_VERSION="2.32.10"
 SDL2_URL="${UBUNTU_POOL}/libs/libsdl2/libsdl2_${SDL2_VERSION}+dfsg.orig.tar.gz"
 SDL2_SHA256="31bac5add36f98b55e3fcf4456f0dab50a06cf06bbcde283be567f64b05b95f3"
 
-# The official SDL2 release libraries for Windows (x64) and macOS (universal), embedded in the system
-# emulators for -display sdl (see stage_sdl2_libraries). Each archive and the library taken from it is
-# pinned by SHA-256.
+# Official SDL2 release libraries (Windows x64, macOS universal) embedded for -display sdl; archive and library both pinned.
 SDL2_RELEASE_URL="https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}"
 SDL2_WIN_ZIP_SHA256="6cf9706eefd0a4a06dc764007934d428afaf029fabdd408a9e646048c91e18fb"
 SDL2_WIN_DLL_SHA256="b37740a72a7a9706216df9f0134894bb7a850b356fd149398c67d874cbcfacb4"
 SDL2_MAC_DMG_SHA256="4a7ac31640d70214e848f994be8a12849c0f97918a7e6c2e27a40036166d1a7f"
 SDL2_MAC_DYLIB_SHA256="bc96277325b2e1dc75a13cf70f5ddcf63005d29e93f54a8b7adc7f5c3c017b91"
 
-# libslirp (user-mode networking); the tarball unpacks to libslirp-v<version>
+# libslirp unpacks to libslirp-v<version>
 LIBSLIRP_VERSION="4.9.3"
 LIBSLIRP_URL="${UBUNTU_POOL}/libs/libslirp/libslirp_${LIBSLIRP_VERSION}.orig.tar.bz2"
 LIBSLIRP_SHA256="c82e22c73bdc3f2c038e538d4f0c9c2166defb2402212d61bb7cb1b530ba952f"
 
-# Cosmopolitan Libc's license, for the notices (the libc is linked into every executable)
+# Cosmopolitan's license, for the notices
 COSMOPOLITAN_VERSION="4.0.2"
 COSMOPOLITAN_LICENSE_URL="https://raw.githubusercontent.com/jart/cosmopolitan/${COSMOPOLITAN_VERSION}/LICENSE"
 COSMOPOLITAN_LICENSE_SHA256="188101f17152d898b65719a4c4fc501aa71c16649cc37ebab534bcb3511c6127"
@@ -197,10 +158,6 @@ echo "Build directory: ${BUILD_DIR}"
 echo "QEMU version: ${QEMU_VERSION}"
 echo "glib version: ${GLIB_VERSION}"
 echo ""
-
-# ---------------------------------------------------------------------------
-# Tool checks
-# ---------------------------------------------------------------------------
 
 for tool in cosmocc apelink assimilate fixupobj git curl tar sed make patch zip unzip bzip2 ninja python3 meson pkg-config sha256sum autoreconf xz cmake; do
     command -v "$tool" &>/dev/null || die "$tool not found in PATH
@@ -231,10 +188,6 @@ echo "  cosmocc: $(command -v cosmocc)"
 echo "  apelink: $(command -v apelink)"
 echo "  meson:   $(meson --version)"
 echo ""
-
-# ---------------------------------------------------------------------------
-# Prepare directories, toolchain shims and sources
-# ---------------------------------------------------------------------------
 
 rm -rf "${SRC_DIR}" "${TOOLS_DIR}" "${LOG_DIR}"
 for arch in ${ARCHES}; do rm -rf "${BUILD_DIR:?}/${arch}"; done
@@ -283,10 +236,6 @@ apply_patches libslirp "${LIBSLIRP_VERSION}" "${SRC_DIR}/libslirp-v${LIBSLIRP_VE
 apply_patches qemu "${QEMU_VERSION}" "${SRC_DIR}/qemu"
 stage_scanf_shim
 
-# ---------------------------------------------------------------------------
-# Per-architecture build
-# ---------------------------------------------------------------------------
-
 FIRMWARE_DIR="${BUILD_DIR}/firmware"
 firmware_done=0
 for arch in $ARCHES; do
@@ -301,8 +250,7 @@ for arch in $ARCHES; do
     build_qemu "${arch}" "${S}" "${B}"
     unset COSMO_MCOSMO
 
-    # Firmware does not depend on the host architecture: take it from the
-    # first build
+    # firmware is architecture-independent: take it from the first build
     if [ "${firmware_done}" = 0 ] && [ -n "${SYSTEM_TARGETS}" ]; then
         echo "  staging firmware..."
         for guest in ${SYSTEM_TARGETS}; do
@@ -312,10 +260,6 @@ for arch in $ARCHES; do
     fi
 done
 
-# ---------------------------------------------------------------------------
-# Link the per-arch binaries into one APE per program
-# ---------------------------------------------------------------------------
-
 echo ""
 echo "================================================"
 echo "Creating fat binaries with apelink"
@@ -324,10 +268,6 @@ echo "================================================"
 prepare_loader_source
 SDL2_LIB_DIR="${BUILD_DIR}/sdl2-libs"
 [ -z "${SYSTEM_TARGETS}" ] || stage_sdl2_libraries "${SDL2_LIB_DIR}"
-
-# ---------------------------------------------------------------------------
-# Licenses go into every executable (see lib/notices.sh)
-# ---------------------------------------------------------------------------
 
 prepare_licenses
 
@@ -339,21 +279,15 @@ if [ -n "${SYSTEM_TARGETS}" ]; then
     for guest in ${SYSTEM_TARGETS}; do
         binary="${OUT_DIR}/qemu-system-${guest}.com"
         link_fat "qemu-system-${guest}" "${binary}"
-        # Embed the firmware: QEMU was configured with --prefix=/zip, so it
-        # looks for /zip/share/qemu/..., which Cosmopolitan serves from the
-        # zip archive appended to the binary
+        # QEMU is configured with --prefix=/zip, so it finds its firmware in the appended zip
         (cd "${FIRMWARE_DIR}/${guest}" && zip -qr "${binary}" share)
-        # the SDL2 libraries for Windows and macOS: share/qemu/sdl2/*
         (cd "${SDL2_LIB_DIR}" && zip -qr "${binary}" share)
         embed_licenses "${binary}"
         ls -lh "${binary}"
     done
 fi
 
-# ---------------------------------------------------------------------------
-# Smoke tests (x86_64 hosts only; the aarch64 halves are tested in CI)
-# ---------------------------------------------------------------------------
-
+# Smoke tests on x86_64 hosts only; CI runs the aarch64 halves
 if [[ " ${ARCHES} " == *" x86_64 "* ]] && [ "$(uname -m)" = "x86_64" ]; then
     echo ""
     echo "Testing qemu-img..."
