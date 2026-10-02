@@ -237,4 +237,15 @@ monitor_cmds "info vnc" -vnc "127.0.0.1:$((PORT + 2)),websocket=127.0.0.1:$((POR
 grep -a -q "127.0.0.1:$((5900 + PORT + 2))" out.txt || fail "vnc server listens on the requested display"
 pass "VNC server with a WebSocket listener"
 
+# TLS (gnutls): load pre-shared-key credentials and use them on a listening
+# chardev socket. Without gnutls the object cannot be created.
+mkdir psk
+echo "cosmo:0123456789abcdef0123456789abcdef" > psk/keys.psk
+monitor_cmds "info chardev" \
+    -object tls-creds-psk,id=tls0,endpoint=server,dir=psk \
+    -chardev "socket,id=c0,host=127.0.0.1,port=$((PORT + 4)),server=on,wait=off,tls-creds=tls0" \
+    || fail "tls (monitor did not finish)"
+grep -a -q "c0: filename=" out.txt || fail "tls-creds-psk with a chardev socket (gnutls)"
+pass "TLS credentials (gnutls) on a chardev socket"
+
 echo "All system emulator smoke tests passed"

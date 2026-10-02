@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # SPDX-License-Identifier: MIT
-# Static dependencies (zlib, libpng, libjpeg-turbo, pcre2, nettle, bzip2, zstd, libffi, glib, pixman, libslirp) built into a per-architecture sysroot.
+# Static dependencies (zlib, libpng, libjpeg-turbo, pcre2, nettle, gnutls, bzip2, zstd, libffi, glib, pixman, libslirp) built into a per-architecture sysroot.
 # Sourced by scripts/build.sh; relies on the variables it defines.
 
 exe_wrapper_for() {
@@ -45,9 +45,27 @@ build_deps() {
     mkdir -p "${B}/pcre2" && cd "${B}/pcre2"
     run_logged "${arch}-pcre2" bash -c "'${SRC_DIR}/pcre2-${PCRE2_VERSION}/configure' --prefix='${S}' --host=${host_triplet} --disable-shared --enable-static && make -j${JOBS} && make install"
 
-    # nettle: no GMP (so no hogweed), and no assembler, which cosmocc may not take
+    # nettle: with its bundled mini-gmp (no GMP), which makes hogweed, the public-key half that
+    # gnutls needs; and no assembler, which cosmocc may not take
     mkdir -p "${B}/nettle" && cd "${B}/nettle"
-    run_logged "${arch}-nettle" bash -c "'${SRC_DIR}/nettle-${NETTLE_VERSION}/configure' --prefix='${S}' --libdir='${S}/lib' --host=${host_triplet} --disable-shared --enable-static --disable-public-key --disable-assembler --disable-documentation --disable-openssl && make -j${JOBS} && make install"
+    run_logged "${arch}-nettle" bash -c "'${SRC_DIR}/nettle-${NETTLE_VERSION}/configure' --prefix='${S}' --libdir='${S}/lib' --host=${host_triplet} --disable-shared --enable-static --enable-mini-gmp --disable-assembler --disable-documentation --disable-openssl && make -j${JOBS} && make install"
+
+    # gnutls (TLS): only the library, with the nettle built above (its mini-gmp, hence
+    # --with-nettle-mini) and its own copies of libtasn1 and libunistring. No assembly,
+    # trust store, PKCS#11, compression or hardware acceleration.
+    mkdir -p "${B}/gnutls" && cd "${B}/gnutls"
+    run_logged "${arch}-gnutls-configure" env PKG_CONFIG_PATH="${S}/lib/pkgconfig" PKG_CONFIG_LIBDIR="${S}/lib/pkgconfig" \
+        CPPFLAGS="-I${S}/include" LDFLAGS="-L${S}/lib" \
+        "${SRC_DIR}/gnutls-${GNUTLS_VERSION}/configure" --prefix="${S}" --host=${host_triplet} --disable-shared --enable-static \
+        --with-nettle-mini --with-included-libtasn1 --with-included-unistring \
+        --without-p11-kit --without-idn --without-zlib --without-brotli --without-zstd --without-tpm --without-tpm2 \
+        --disable-doc --disable-tests --disable-tools --disable-cxx --disable-guile --disable-nls --disable-libdane \
+        --disable-hardware-acceleration --disable-openssl-compatibility --disable-ktls --disable-gtk-doc --disable-rpath
+    run_logged "${arch}-gnutls" bash -c "make -j${JOBS} -C gl && make -j${JOBS} -C lib && make -C lib install"
+    # libgnutls.a needs hogweed and nettle after it, and meson drops the extra -l flags of
+    # gnutls.pc: list hogweed in nettle.pc, which QEMU's link uses as well
+    sed -i 's/^Libs: -L\${libdir} -lnettle/Libs: -L\${libdir} -lhogweed -lnettle/' "${S}/lib/pkgconfig/nettle.pc"
+    grep -q -- '-lhogweed -lnettle' "${S}/lib/pkgconfig/nettle.pc" || die "could not add hogweed to nettle.pc"
 
     # bzip2 (only the library; it builds in the source tree, so use a copy)
     mkdir -p "${B}/bzip2" "${S}/include" "${S}/lib" && cp -r "${SRC_DIR}/bzip2-${BZIP2_VERSION}/." "${B}/bzip2"

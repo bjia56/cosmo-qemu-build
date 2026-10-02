@@ -57,8 +57,9 @@ build_qemu() {
     #  --disable-plugins          TCG plugins are loaded with dlopen
     #  --enable-virtfs            9p file sharing, with the Cosmopolitan host support from
     #                             patch 15 (its extended attributes only work on Linux)
-    #  --enable-vnc               the built-in VNC server (pixman, zlib and libjpeg-turbo;
-    #                             no TLS or SASL, those libraries are not built)
+    #  --enable-gnutls            TLS (needs hogweed from nettle; crypto itself stays on nettle)
+    #  --enable-vnc               the built-in VNC server (pixman, zlib, libjpeg-turbo and
+    #                             gnutls for TLS; no SASL)
     #  the rest strips everything cosmocc cannot build or QEMU does not need
     run_logged "${arch}-qemu-configure" env \
         PKG_CONFIG_PATH="${S}/lib/pkgconfig" PKG_CONFIG_LIBDIR="${S}/lib/pkgconfig" \
@@ -74,7 +75,7 @@ build_qemu() {
         --disable-linux-aio --disable-linux-io-uring \
         --disable-vhost-user --disable-vhost-kernel --disable-vhost-user-blk-server \
         --disable-vduse-blk-export --disable-libvduse \
-        --disable-curl --disable-gnutls --enable-nettle --disable-gcrypt \
+        --disable-curl --enable-gnutls --enable-nettle --disable-gcrypt \
         --enable-zstd --enable-bzip2 --disable-fuse \
         --disable-seccomp --disable-attr --disable-libnfs --disable-libssh \
         --disable-rbd --disable-glusterfs --disable-capstone

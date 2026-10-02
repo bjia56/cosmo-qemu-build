@@ -17,6 +17,7 @@ write_notices() {
             "proxy-libintl ${PROXY_LIBINTL_VERSION}|${SRC_DIR}/glib/subprojects/proxy-libintl/COPYING" \
             "libpng ${LIBPNG_VERSION}|${SRC_DIR}/libpng-${LIBPNG_VERSION}/LICENSE" \
             "libjpeg-turbo ${LIBJPEG_TURBO_VERSION}|${SRC_DIR}/libjpeg-turbo-${LIBJPEG_TURBO_VERSION}/LICENSE.md" \
+            "gnutls ${GNUTLS_VERSION} (with its bundled libtasn1 and libunistring)|${SRC_DIR}/gnutls-${GNUTLS_VERSION}/COPYING.LESSERv2" \
             "pcre2 ${PCRE2_VERSION}|${SRC_DIR}/pcre2-${PCRE2_VERSION}/LICENCE.md" \
             "nettle ${NETTLE_VERSION} (used under GPL-2.0-or-later)|${SRC_DIR}/nettle-${NETTLE_VERSION}/COPYINGv2" \
             "bzip2 ${BZIP2_VERSION}|${SRC_DIR}/bzip2-${BZIP2_VERSION}/LICENSE" \

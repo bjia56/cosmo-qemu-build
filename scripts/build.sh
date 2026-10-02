@@ -121,7 +121,8 @@ LIBPNG_VERSION="1.6.58"
 LIBPNG_URL="${UBUNTU_POOL}/libp/libpng1.6/libpng1.6_${LIBPNG_VERSION}.orig.tar.gz"
 LIBPNG_SHA256="a9d4df463d36a6e5f9c29bd6f4967312d17e996c1854f3511f833924eb1993cf"
 
-# nettle provides QEMU's crypto (LUKS, qcow2 encryption); built without GMP, so no public-key code
+# nettle provides QEMU's crypto (LUKS, qcow2 encryption) and, with its bundled mini-gmp, the public-key
+# code (hogweed) that gnutls needs
 NETTLE_VERSION="3.10.2"
 NETTLE_URL="${UBUNTU_POOL}/n/nettle/nettle_${NETTLE_VERSION}.orig.tar.gz"
 NETTLE_SHA256="fe9ff51cb1f2abb5e65a6b8c10a92da0ab5ab6eaf26e7fc2b675c45f1fb519b5"
@@ -143,6 +144,11 @@ PIXMAN_SHA256="d09c44ebc3bd5bee7021c79f922fe8fb2fb57f7320f55e97ff9914d2346a591c"
 LIBJPEG_TURBO_VERSION="3.1.3"
 LIBJPEG_TURBO_URL="${UBUNTU_POOL}/libj/libjpeg-turbo/libjpeg-turbo_${LIBJPEG_TURBO_VERSION}.orig.tar.gz"
 LIBJPEG_TURBO_SHA256="3a13a5ba767dc8264bc40b185e41368a80d5d5f945944d1dbaa4b2fb0099f4e5"
+
+# gnutls (TLS for VNC, NBD, chardev sockets and migration); it bundles libtasn1 and libunistring
+GNUTLS_VERSION="3.8.13"
+GNUTLS_URL="${UBUNTU_POOL}/g/gnutls28/gnutls28_${GNUTLS_VERSION}.orig.tar.xz"
+GNUTLS_SHA256="ffed8ec1bf09c2426d4f14aae377de4753b53e537d685e604e99a8b16ca9c97e"
 
 # libslirp (user-mode networking); the tarball unpacks to libslirp-v<version>
 LIBSLIRP_VERSION="4.9.3"
@@ -229,6 +235,7 @@ download "${BZIP2_SHA256}" "bzip2-${BZIP2_VERSION}.tar.gz" "${BZIP2_URL}"
 download "${ZSTD_SHA256}" "zstd-${ZSTD_VERSION}.tar.xz" "${ZSTD_URL}"
 download "${PIXMAN_SHA256}" "pixman-${PIXMAN_VERSION}.tar.gz" "${PIXMAN_URL}"
 download "${LIBJPEG_TURBO_SHA256}" "libjpeg-turbo-${LIBJPEG_TURBO_VERSION}.tar.gz" "${LIBJPEG_TURBO_URL}"
+download "${GNUTLS_SHA256}" "gnutls-${GNUTLS_VERSION}.tar.xz" "${GNUTLS_URL}"
 download "${LIBSLIRP_SHA256}" "libslirp-${LIBSLIRP_VERSION}.tar.bz2" "${LIBSLIRP_URL}"
 download "${COSMOPOLITAN_LICENSE_SHA256}" "cosmopolitan-LICENSE" "${COSMOPOLITAN_LICENSE_URL}"
 mkdir "${SRC_DIR}/zlib-${ZLIB_VERSION}"
@@ -241,6 +248,7 @@ tar -xf "${DL_DIR}/bzip2-${BZIP2_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/zstd-${ZSTD_VERSION}.tar.xz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/pixman-${PIXMAN_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/libjpeg-turbo-${LIBJPEG_TURBO_VERSION}.tar.gz" -C "${SRC_DIR}"
+tar -xf "${DL_DIR}/gnutls-${GNUTLS_VERSION}.tar.xz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/libslirp-${LIBSLIRP_VERSION}.tar.bz2" -C "${SRC_DIR}"
 
 # Fail early for a QEMU version that has no patches

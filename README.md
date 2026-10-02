@@ -31,17 +31,18 @@ executable compiles on its first run (this needs the Xcode command line tools, a
 program). The executables use their own loader, `.q.ape-01` in `${TMPDIR:-$HOME}`, which signs itself with the
 entitlement on first use, so HVF works without any setup. See [`patches/README.md`](patches/README.md).
 
-Not included: network block drivers (curl, ssh, nfs, rbd, gluster), TLS (gnutls), RSA/public-key
-crypto, libgcrypt, Linux-specific I/O (io_uring, linux-aio),
+Not included: network block drivers (curl, ssh, nfs, rbd, gluster), SASL, libgcrypt, Linux-specific I/O (io_uring, linux-aio),
 graphics front ends (SDL, GTK, ...) and vhost. The only display is the built-in VNC server, below.
 
 ## Display: VNC
 
 `-vnc 127.0.0.1:0` serves the guest's display on port 5900, with no graphics library involved: QEMU's VNC server
 needs only pixman, zlib and libjpeg-turbo (all built from source here), and ZRLE, Tight (with PNG and, through libjpeg-turbo, lossy JPEG), Hextile and zlib encodings work. `password=on` (set it with
-`set_password vnc <pw>` in the monitor) and `websocket=<addr>:<port>` (for noVNC) are available. Not built: TLS
-(`tls-creds`, VeNCrypt) and SASL. Bind VNC to localhost unless you add your own tunnel,
-since the built-in authentication is weak.
+`set_password vnc <pw>` in the monitor) and `websocket=<addr>:<port>` (for noVNC) are available.
+TLS works through gnutls: create `-object tls-creds-x509,id=tls0,endpoint=server,dir=<certs>` and add `tls-creds=tls0` to
+`-vnc` (VeNCrypt, which most clients speak; `verify-peer=on` asks for client certificates). SASL is not built. Without
+`tls-creds`, bind VNC to localhost or tunnel it, since the built-in password authentication is weak.
+The same credentials can be used wherever QEMU takes `tls-creds` (chardev sockets, NBD, migration); of these only the chardev case is exercised by CI.
 
 ## Sharing a host directory (virtfs / 9p)
 
@@ -85,7 +86,7 @@ release), plus `git`, `curl`, `tar`, `sed`, `make`, `patch`, `zip`, `bzip2`, `ni
 ./scripts/smoke_test_aarch64.sh out      # the aarch64 halves, under qemu-user
 ```
 
-`scripts/build.sh` runs the smoke tests for the x86_64 halves itself. It compiles zlib, libpng, libjpeg-turbo, pcre2, bzip2, zstd, libffi,
+`scripts/build.sh` runs the smoke tests for the x86_64 halves itself. It compiles zlib, libpng, libjpeg-turbo, pcre2, nettle, gnutls, bzip2, zstd, libffi,
 glib and pixman for each architecture into a static sysroot, then builds QEMU from a tagged release and
 links both architectures into one file per program with `apelink`. The Cosmopolitan-specific changes to
 glib and QEMU are in [`patches/`](patches), and [`compat/`](compat) holds the header shims and the macOS
@@ -109,7 +110,7 @@ and are not stored in this repository.
 The executables are built from [QEMU](https://www.qemu.org/), which is licensed under the GPL-2.0, see
 [COPYING](https://gitlab.com/qemu-project/qemu/-/blob/master/COPYING). They statically link
 [Cosmopolitan Libc](https://github.com/jart/cosmopolitan) (ISC, with the notices of the third-party code it
-bundles embedded in the executables), glib and proxy-libintl (LGPL-2.1+), libpng (libpng license), libjpeg-turbo (IJG, BSD-3-Clause and zlib), pcre2 (BSD), nettle (LGPL-3.0+ or GPL-2.0+, used under the GPL), bzip2 (bzip2 license), zstd (BSD-3-Clause), libffi (MIT), zlib
+bundles embedded in the executables), glib and proxy-libintl (LGPL-2.1+), libpng (libpng license), libjpeg-turbo (IJG, BSD-3-Clause and zlib), gnutls (LGPL-2.1+, with its bundled libtasn1 and libunistring), pcre2 (BSD), nettle (LGPL-3.0+ or GPL-2.0+, used under the GPL), bzip2 (bzip2 license), zstd (BSD-3-Clause), libffi (MIT), zlib
 (zlib), pixman (MIT) and libslirp (BSD-3-Clause). `COPYING` and `THIRD_PARTY_NOTICES.txt`, with all of their license texts, are
 embedded in each executable.
 
