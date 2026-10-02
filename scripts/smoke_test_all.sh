@@ -24,7 +24,8 @@ esac
 # Windows runs executables that end in .exe; elsewhere the APE files are started through sh,
 # which also covers a download that lost its executable bit
 if [ "$host" = windows ]; then
-    for f in "$DIR"/*.com; do cp "$f" "${f%.com}.exe"; done
+    # once: a copy still running from an earlier stage keeps its file locked
+    for f in "$DIR"/*.com; do [ -f "${f%.com}.exe" ] || cp "$f" "${f%.com}.exe"; done
     cmd() { echo "$DIR/$1.exe"; }
     sandbox=on,spawn=deny
 else

@@ -129,15 +129,15 @@ jobs:
         timeout-minutes: 10
         run: ./scripts/smoke_test_all.sh dist img
 
-      - name: Test the system emulators
-        if: ${{ !cancelled() }}
-        timeout-minutes: 15
-        run: ./scripts/smoke_test_all.sh dist system
-
       - name: Test -sandbox
         if: ${{ !cancelled() }}
         timeout-minutes: 10
         run: ./scripts/smoke_test_all.sh dist sandbox
+
+      - name: Test the system emulators
+        if: ${{ !cancelled() }}
+        timeout-minutes: 15
+        run: ./scripts/smoke_test_all.sh dist system
 
       - name: Test the system emulators with -sandbox
         if: ${{ !cancelled() }}
