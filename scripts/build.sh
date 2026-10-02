@@ -150,6 +150,11 @@ GNUTLS_VERSION="3.8.13"
 GNUTLS_URL="${UBUNTU_POOL}/g/gnutls28/gnutls28_${GNUTLS_VERSION}.orig.tar.xz"
 GNUTLS_SHA256="ffed8ec1bf09c2426d4f14aae377de4753b53e537d685e604e99a8b16ca9c97e"
 
+# SDL2 headers only (-display sdl): the library itself is the host's, loaded at run time
+SDL2_VERSION="2.32.10"
+SDL2_URL="${UBUNTU_POOL}/libs/libsdl2/libsdl2_${SDL2_VERSION}+dfsg.orig.tar.gz"
+SDL2_SHA256="31bac5add36f98b55e3fcf4456f0dab50a06cf06bbcde283be567f64b05b95f3"
+
 # libslirp (user-mode networking); the tarball unpacks to libslirp-v<version>
 LIBSLIRP_VERSION="4.9.3"
 LIBSLIRP_URL="${UBUNTU_POOL}/libs/libslirp/libslirp_${LIBSLIRP_VERSION}.orig.tar.bz2"
@@ -236,6 +241,7 @@ download "${ZSTD_SHA256}" "zstd-${ZSTD_VERSION}.tar.xz" "${ZSTD_URL}"
 download "${PIXMAN_SHA256}" "pixman-${PIXMAN_VERSION}.tar.gz" "${PIXMAN_URL}"
 download "${LIBJPEG_TURBO_SHA256}" "libjpeg-turbo-${LIBJPEG_TURBO_VERSION}.tar.gz" "${LIBJPEG_TURBO_URL}"
 download "${GNUTLS_SHA256}" "gnutls-${GNUTLS_VERSION}.tar.xz" "${GNUTLS_URL}"
+download "${SDL2_SHA256}" "sdl2-${SDL2_VERSION}.tar.gz" "${SDL2_URL}"
 download "${LIBSLIRP_SHA256}" "libslirp-${LIBSLIRP_VERSION}.tar.bz2" "${LIBSLIRP_URL}"
 download "${COSMOPOLITAN_LICENSE_SHA256}" "cosmopolitan-LICENSE" "${COSMOPOLITAN_LICENSE_URL}"
 mkdir "${SRC_DIR}/zlib-${ZLIB_VERSION}"
@@ -249,6 +255,7 @@ tar -xf "${DL_DIR}/zstd-${ZSTD_VERSION}.tar.xz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/pixman-${PIXMAN_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/libjpeg-turbo-${LIBJPEG_TURBO_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/gnutls-${GNUTLS_VERSION}.tar.xz" -C "${SRC_DIR}"
+tar -xf "${DL_DIR}/sdl2-${SDL2_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/libslirp-${LIBSLIRP_VERSION}.tar.bz2" -C "${SRC_DIR}"
 
 # Fail early for a QEMU version that has no patches

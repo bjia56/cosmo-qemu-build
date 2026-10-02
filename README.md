@@ -32,7 +32,7 @@ program). The executables use their own loader, `.q.ape-01` in `${TMPDIR:-$HOME}
 entitlement on first use, so HVF works without any setup. See [`patches/README.md`](patches/README.md).
 
 Not included: network block drivers (curl, ssh, nfs, rbd, gluster), SASL, libgcrypt, Linux-specific I/O (io_uring, linux-aio),
-graphics front ends (SDL, GTK, ...) and vhost. The only display is the built-in VNC server, below.
+GTK, OpenGL and vhost. The displays are the built-in VNC server and `-display sdl`, below.
 
 ## Display: VNC
 
@@ -43,6 +43,14 @@ TLS works through gnutls: create `-object tls-creds-x509,id=tls0,endpoint=server
 `-vnc` (VeNCrypt, which most clients speak; `verify-peer=on` asks for client certificates). SASL is not built. Without
 `tls-creds`, bind VNC to localhost or tunnel it, since the built-in password authentication is weak.
 The same credentials can be used wherever QEMU takes `tls-creds` (chardev sockets, NBD, migration); of these only the chardev case is exercised by CI.
+
+## Display: SDL
+
+`-display sdl` opens a native window using the **host's** SDL2, which is loaded at run time (nothing is linked): install
+`libsdl2-2.0-0` (Debian/Ubuntu), `sdl2` (Homebrew), or put `SDL2.dll` where Windows finds it. Without the library QEMU says
+so and exits; `-display vnc` needs nothing. Only the 2D renderer is supported (no `gl=on`, no SDL audio), and SDL is never
+chosen by default. It has been run on Linux only (under Xvfb: `scripts/smoke_test_sdl.sh`); the Windows and macOS paths
+(including SDL's main-thread requirement on macOS) have not been run.
 
 ## Sharing a host directory (virtfs / 9p)
 

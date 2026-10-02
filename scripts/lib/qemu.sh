@@ -43,9 +43,9 @@ build_qemu() {
             hvf_flag="--enable-hvf"
             extra_cflags="${extra_cflags} -I${S}/include/hvf"
         fi
-        system_flags=(--target-list="${targets%,}" --enable-slirp --enable-virtfs --enable-vnc --enable-vnc-jpeg ${kvm_flag} ${whpx_flag} ${hvf_flag})
+        system_flags=(--target-list="${targets%,}" --enable-slirp --enable-virtfs --enable-vnc --enable-vnc-jpeg --enable-sdl --disable-sdl-image ${kvm_flag} ${whpx_flag} ${hvf_flag})
     else
-        system_flags=(--disable-system --disable-slirp --disable-virtfs --disable-vnc --disable-vnc-jpeg)
+        system_flags=(--disable-system --disable-slirp --disable-virtfs --disable-vnc --disable-vnc-jpeg --disable-sdl)
     fi
 
     # Notes on the flags:
@@ -60,6 +60,8 @@ build_qemu() {
     #  --enable-gnutls            TLS (needs hogweed from nettle; crypto itself stays on nettle)
     #  --enable-vnc               the built-in VNC server (pixman, zlib, libjpeg-turbo and
     #                             gnutls for TLS; no SASL)
+    #  --enable-sdl               -display sdl, with the host's SDL2 loaded at run time (patch 17);
+    #                             only SDL's headers are in the sysroot
     #  the rest strips everything cosmocc cannot build or QEMU does not need
     run_logged "${arch}-qemu-configure" env \
         PKG_CONFIG_PATH="${S}/lib/pkgconfig" PKG_CONFIG_LIBDIR="${S}/lib/pkgconfig" \

@@ -152,6 +152,7 @@ EOF
             --prefix="${S}" --default-library=static --wrap-mode=nodownload
         run_logged "${arch}-libslirp-build" ninja -C "${B}/libslirp" -j"${JOBS}" install
         stage_kernel_headers "${arch}" "${S}"
+        stage_sdl2_headers "${S}"
         # WHPX only exists for x86_64 guests on x86_64 (Windows) hosts
         if [ "${arch}" = "x86_64" ] && [[ " ${SYSTEM_TARGETS} " == *" x86_64 "* ]]; then
             stage_whp_headers "${S}"

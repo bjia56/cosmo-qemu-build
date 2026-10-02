@@ -1,0 +1,245 @@
+diff --git a/audio/meson.build b/audio/meson.build
+index 59f0a43..e010475 100644
+--- a/audio/meson.build
++++ b/audio/meson.build
+@@ -15,7 +15,7 @@ foreach m : [
+   ['alsa', alsa, files('alsaaudio.c')],
+   ['oss', oss, files('ossaudio.c')],
+   ['pa', pulse, files('paaudio.c')],
+-  ['sdl', sdl, files('sdlaudio.c')],
++  ['sdl', host_os == 'cosmopolitan' ? not_found : sdl, files('sdlaudio.c')],
+   ['jack', jack, files('jackaudio.c')],
+   ['sndio', sndio, files('sndioaudio.c')],
+   ['pipewire', pipewire, files('pwaudio.c')],
+diff --git a/include/ui/sdl2.h b/include/ui/sdl2.h
+index dbe6e3d..0cd9778 100644
+--- a/include/ui/sdl2.h
++++ b/include/ui/sdl2.h
+@@ -22,6 +22,10 @@
+ #endif
+ 
+ #include "ui/kbd-state.h"
++#ifdef __COSMOPOLITAN__
++/* Loads the host's SDL2 library (ui/sdl2-cosmo.c) */
++bool sdl2_cosmo_load(Error **errp);
++#endif
+ #ifdef CONFIG_OPENGL
+ # include "ui/egl-helpers.h"
+ #endif
+diff --git a/meson.build b/meson.build
+index 5f54d6f..47d12aa 100644
+--- a/meson.build
++++ b/meson.build
+@@ -2286,7 +2286,7 @@ if have_system
+     'oss': oss.found(),
+     'pa': pulse.found(),
+     'pipewire': pipewire.found(),
+-    'sdl': sdl.found(),
++    'sdl': sdl.found() and host_os != 'cosmopolitan',
+     'sndio': sndio.found(),
+   }
+   foreach k, v: audio_drivers_available
+diff --git a/ui/console.c b/ui/console.c
+index 5165f17..3086044 100644
+--- a/ui/console.c
++++ b/ui/console.c
+@@ -1518,7 +1518,8 @@ bool qemu_display_find_default(DisplayOptions *opts)
+ #if defined(CONFIG_GTK)
+         DISPLAY_TYPE_GTK,
+ #endif
+-#if defined(CONFIG_SDL)
++#if defined(CONFIG_SDL) && !defined(__COSMOPOLITAN__)
++        /* SDL2 is the host's, loaded at run time: only on request */
+         DISPLAY_TYPE_SDL,
+ #endif
+ #if defined(CONFIG_COCOA)
+diff --git a/ui/meson.build b/ui/meson.build
+index 28c7381..9b90287 100644
+--- a/ui/meson.build
++++ b/ui/meson.build
+@@ -130,6 +130,9 @@ if sdl.found()
+     'sdl2-input.c',
+     'sdl2.c',
+   ))
++  if host_os == 'cosmopolitan'
++    sdl_ss.add(files('sdl2-cosmo.c'))
++  endif
+   sdl_ss.add(when: opengl, if_true: files('sdl2-gl.c'))
+   sdl_ss.add(when: x11, if_true: files('x_keymap.c'))
+   ui_modules += {'sdl' : sdl_ss}
+diff --git a/ui/sdl2-cosmo.c b/ui/sdl2-cosmo.c
+new file mode 100644
+index 0000000..0e31066
+--- /dev/null
++++ b/ui/sdl2-cosmo.c
+@@ -0,0 +1,148 @@
++/*
++ * SDL2 for Cosmopolitan builds: the host's SDL2 library, loaded at run time.
++ *
++ * This build links no graphics library.  The SDL headers are only used to
++ * compile ui/sdl2*.c; the functions they declare are defined here as thin
++ * wrappers that forward to the function addresses found in the host's SDL2
++ * (SDL2.dll, libSDL2-2.0.0.dylib or libSDL2-2.0.so.0) when the display is
++ * initialized.  Every entry point goes through cosmo_dltramp(), which converts
++ * between the System V calling convention used here and the one the library
++ * uses (Microsoft x64 on Windows), as for Hypervisor.framework and WHPX.
++ *
++ * Only the 2D renderer path is covered: nothing here takes a callback from SDL
++ * (no event watches, timers, audio or threads), so no trampolines in the other
++ * direction are needed.
++ *
++ * This work is licensed under the terms of the GNU GPL, version 2 or later.
++ * See the COPYING file in the top-level directory.
++ */
++
++#include "qemu/osdep.h"
++#include "ui/console.h"
++#include "ui/sdl2.h"
++#include "qapi/error.h"
++
++#include <cosmo.h>
++#include <dlfcn.h>
++
++/* X(ret, name, (params), (args)) for functions returning a value, XV for void */
++#define SDL2_COSMO_FUNCS(X, XV) \
++    X(SDL_Cursor *, SDL_CreateColorCursor, (SDL_Surface *surface, int hot_x, int hot_y), (surface, hot_x, hot_y)) \
++    X(SDL_Cursor *, SDL_CreateCursor, (const Uint8 * data, const Uint8 * mask, int w, int h, int hot_x, int hot_y), (data, mask, w, h, hot_x, hot_y)) \
++    X(SDL_Surface *, SDL_CreateRGBSurfaceFrom, (void *pixels, int width, int height, int depth, int pitch, Uint32 Rmask, Uint32 Gmask, Uint32 Bmask, Uint32 Amask), (pixels, width, height, depth, pitch, Rmask, Gmask, Bmask, Amask)) \
++    X(SDL_Renderer *, SDL_CreateRenderer, (SDL_Window * window, int index, Uint32 flags), (window, index, flags)) \
++    X(SDL_Texture *, SDL_CreateTexture, (SDL_Renderer * renderer, Uint32 format, int access, int w, int h), (renderer, format, access, w, h)) \
++    X(SDL_Window *, SDL_CreateWindow, (const char *title, int x, int y, int w, int h, Uint32 flags), (title, x, y, w, h, flags)) \
++    XV(void, SDL_DestroyRenderer, (SDL_Renderer * renderer), (renderer)) \
++    XV(void, SDL_DestroyTexture, (SDL_Texture * texture), (texture)) \
++    XV(void, SDL_DestroyWindow, (SDL_Window * window), (window)) \
++    XV(void, SDL_EnableScreenSaver, (void), ()) \
++    XV(void, SDL_FreeCursor, (SDL_Cursor * cursor), (cursor)) \
++    XV(void, SDL_FreeSurface, (SDL_Surface * surface), (surface)) \
++    X(SDL_Cursor *, SDL_GetCursor, (void), ()) \
++    X(const char *, SDL_GetError, (void), ()) \
++    X(SDL_bool, SDL_GetHintBoolean, (const char *name, SDL_bool default_value), (name, default_value)) \
++    X(SDL_Keymod, SDL_GetModState, (void), ()) \
++    X(Uint32, SDL_GetMouseState, (int *x, int *y), (x, y)) \
++    X(Uint32, SDL_GetWindowFlags, (SDL_Window * window), (window)) \
++    X(SDL_Window *, SDL_GetWindowFromID, (Uint32 id), (id)) \
++    XV(void, SDL_GetWindowSize, (SDL_Window * window, int *w, int *h), (window, w, h)) \
++    X(SDL_bool, SDL_GetWindowWMInfo, (SDL_Window * window, SDL_SysWMinfo * info), (window, info)) \
++    XV(void, SDL_HideWindow, (SDL_Window * window), (window)) \
++    X(int, SDL_Init, (Uint32 flags), (flags)) \
++    XV(void, SDL_LogSetAllPriority, (SDL_LogPriority priority), (priority)) \
++    X(Uint32, SDL_MapRGB, (const SDL_PixelFormat * format, Uint8 r, Uint8 g, Uint8 b), (format, r, g, b)) \
++    X(int, SDL_PollEvent, (SDL_Event * event), (event)) \
++    XV(void, SDL_QuitSubSystem, (Uint32 flags), (flags)) \
++    X(int, SDL_RenderClear, (SDL_Renderer * renderer), (renderer)) \
++    X(int, SDL_RenderCopy, (SDL_Renderer * renderer, SDL_Texture * texture, const SDL_Rect * srcrect, const SDL_Rect * dstrect), (renderer, texture, srcrect, dstrect)) \
++    XV(void, SDL_RenderPresent, (SDL_Renderer * renderer), (renderer)) \
++    X(int, SDL_RenderSetLogicalSize, (SDL_Renderer * renderer, int w, int h), (renderer, w, h)) \
++    X(int, SDL_SetColorKey, (SDL_Surface * surface, int flag, Uint32 key), (surface, flag, key)) \
++    XV(void, SDL_SetCursor, (SDL_Cursor * cursor), (cursor)) \
++    X(SDL_bool, SDL_SetHint, (const char *name, const char *value), (name, value)) \
++    X(int, SDL_SetRelativeMouseMode, (SDL_bool enabled), (enabled)) \
++    X(int, SDL_SetWindowFullscreen, (SDL_Window * window, Uint32 flags), (window, flags)) \
++    XV(void, SDL_SetWindowGrab, (SDL_Window * window, SDL_bool grabbed), (window, grabbed)) \
++    XV(void, SDL_SetWindowIcon, (SDL_Window * window, SDL_Surface * icon), (window, icon)) \
++    XV(void, SDL_SetWindowSize, (SDL_Window * window, int w, int h), (window, w, h)) \
++    XV(void, SDL_SetWindowTitle, (SDL_Window * window, const char *title), (window, title)) \
++    X(int, SDL_ShowCursor, (int toggle), (toggle)) \
++    XV(void, SDL_ShowWindow, (SDL_Window * window), (window)) \
++    X(int, SDL_UpdateTexture, (SDL_Texture * texture, const SDL_Rect * rect, const void *pixels, int pitch), (texture, rect, pixels, pitch)) \
++    XV(void, SDL_WarpMouseInWindow, (SDL_Window * window, int x, int y), (window, x, y)) \
++    X(SDL_GLContext, SDL_GL_CreateContext, (SDL_Window * window), (window)) \
++    XV(void, SDL_GL_DeleteContext, (SDL_GLContext context), (context)) \
++    X(int, SDL_GL_SetSwapInterval, (int interval), (interval)) \
++    X(SDL_Surface *, SDL_LoadBMP_RW, (SDL_RWops * src, int freesrc), (src, freesrc)) \
++    X(SDL_RWops *, SDL_RWFromFile, (const char *file, const char *mode), (file, mode))
++
++static struct {
++#define X(ret, name, params, args) ret (*name) params;
++#define XV(ret, name, params, args) ret (*name) params;
++    SDL2_COSMO_FUNCS(X, XV)
++#undef X
++#undef XV
++} sdl2_fn;
++
++#define X(ret, name, params, args) \
++    ret name params { return sdl2_fn.name args; }
++#define XV(ret, name, params, args) \
++    ret name params { sdl2_fn.name args; }
++SDL2_COSMO_FUNCS(X, XV)
++#undef X
++#undef XV
++
++static void *sdl2_open(const char **tried)
++{
++    static const char *const windows_names[] = { "SDL2.dll", NULL };
++    static const char *const macos_names[] = {
++        "libSDL2-2.0.0.dylib",
++        "/opt/homebrew/lib/libSDL2-2.0.0.dylib",
++        "/usr/local/lib/libSDL2-2.0.0.dylib",
++        NULL
++    };
++    static const char *const unix_names[] = {
++        "libSDL2-2.0.so.0", "libSDL2-2.0.so", NULL
++    };
++    const char *const *names = IsWindows() ? windows_names :
++                               IsXnu() ? macos_names : unix_names;
++    void *lib;
++
++    for (; *names; names++) {
++        *tried = *names;
++        lib = cosmo_dlopen(*names, RTLD_NOW);
++        if (lib) {
++            return lib;
++        }
++    }
++    return NULL;
++}
++
++bool sdl2_cosmo_load(Error **errp)
++{
++    static bool loaded;
++    const char *tried = "";
++    void *lib, *sym;
++
++    if (loaded) {
++        return true;
++    }
++    lib = sdl2_open(&tried);
++    if (!lib) {
++        error_setg(errp, "cannot load the SDL2 library (%s): %s; install SDL2 "
++                   "or use -display vnc", tried, cosmo_dlerror());
++        return false;
++    }
++#define BIND(ret, name, params, args) \
++    sym = cosmo_dlsym(lib, #name); \
++    sdl2_fn.name = sym ? cosmo_dltramp(sym) : NULL; \
++    if (!sdl2_fn.name) { \
++        error_setg(errp, "SDL2 library lacks %s (is it SDL 2.x?)", #name); \
++        return false; \
++    }
++    SDL2_COSMO_FUNCS(BIND, BIND)
++#undef BIND
++    loaded = true;
++    return true;
++}
+diff --git a/ui/sdl2.c b/ui/sdl2.c
+index bd4f5a9..bb14938 100644
+--- a/ui/sdl2.c
++++ b/ui/sdl2.c
+@@ -857,6 +857,17 @@ static void sdl2_display_init(DisplayState *ds, DisplayOptions *o)
+ 
+     assert(o->type == DISPLAY_TYPE_SDL);
+ 
++#ifdef __COSMOPOLITAN__
++    {
++        Error *err = NULL;
++
++        if (!sdl2_cosmo_load(&err)) {
++            error_report_err(err);
++            exit(1);
++        }
++    }
++#endif
++
+     if (SDL_GetHintBoolean("QEMU_ENABLE_SDL_LOGGING", SDL_FALSE)) {
+         SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
+     }

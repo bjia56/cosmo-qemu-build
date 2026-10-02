@@ -113,3 +113,26 @@ stage_scanf_shim() {
     cp "${c}/cosmo-sscanf.c" "${SRC_DIR}/qemu/util/"
     cp "${c}/cosmo-sscanf.h" "${c}/cosmo-sscanf.c" "${slirp}/"
 }
+
+# stage_sdl2_headers <sysroot>
+#
+# QEMU's SDL display (-display sdl) is compiled against the SDL2 headers, but no
+# SDL library is linked: the host's SDL2 is loaded with cosmo_dlopen() when the
+# display starts (QEMU patch 17, ui/sdl2-cosmo.c). The headers come from the
+# source tarball, whose SDL_config.h selects the minimal configuration (no X11 or
+# other platform headers), and a pkg-config file with only cflags stands in for
+# SDL2's own.
+stage_sdl2_headers() {
+    local S=$1
+    echo "  staging SDL2 headers..."
+    mkdir -p "${S}/include/SDL2" "${S}/lib/pkgconfig"
+    cp "${SRC_DIR}/SDL2-${SDL2_VERSION}"/include/*.h "${S}/include/SDL2/"
+    cat > "${S}/lib/pkgconfig/sdl2.pc" <<PCEND
+prefix=${S}
+Name: sdl2
+Description: SDL2 headers only; the library is loaded at run time
+Version: ${SDL2_VERSION}
+Cflags: -I${S}/include/SDL2
+Libs:
+PCEND
+}

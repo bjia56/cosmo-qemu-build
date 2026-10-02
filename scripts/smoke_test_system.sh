@@ -248,4 +248,16 @@ monitor_cmds "info chardev" \
 grep -a -q "c0: filename=" out.txt || fail "tls-creds-psk with a chardev socket (gnutls)"
 pass "TLS credentials (gnutls) on a chardev socket"
 
+# SDL display (the host's SDL2, loaded at run time; QEMU patch 17). Where SDL2
+# or a display is missing it has to fail with a clear message rather than crash;
+# where both exist it opens a window (scripts/smoke_test_sdl.sh checks that).
+monitor_cmds "quit" -display sdl -net none \
+    || fail "sdl display (monitor did not finish)"
+if grep -a -q "lacks SDL_\|undefined symbol" out.txt; then fail "sdl display: SDL2 binding"; fi
+if grep -a -q "cannot load the SDL2 library" out.txt; then
+    pass "-display sdl reports a missing SDL2 library cleanly"
+else
+    pass "-display sdl with the host's SDL2"
+fi
+
 echo "All system emulator smoke tests passed"
