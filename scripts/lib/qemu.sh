@@ -34,9 +34,9 @@ build_qemu() {
             hvf_flag="--enable-hvf"
             extra_cflags="${extra_cflags} -I${S}/include/hvf"
         fi
-        system_flags=(--target-list="${targets%,}" --enable-slirp --enable-virtfs --enable-vnc --enable-vnc-jpeg --enable-sdl --disable-sdl-image ${kvm_flag} ${whpx_flag} ${hvf_flag})
+        system_flags=(--target-list="${targets%,}" --enable-slirp --enable-seccomp --enable-virtfs --enable-vnc --enable-vnc-jpeg --enable-sdl --disable-sdl-image ${kvm_flag} ${whpx_flag} ${hvf_flag})
     else
-        system_flags=(--disable-system --disable-slirp --disable-virtfs --disable-vnc --disable-vnc-jpeg --disable-sdl)
+        system_flags=(--disable-system --disable-slirp --disable-seccomp --disable-virtfs --disable-vnc --disable-vnc-jpeg --disable-sdl)
     fi
 
     #  --prefix=/zip, --disable-relocatable: data files come from the embedded zip, not relative to the executable
@@ -61,7 +61,7 @@ build_qemu() {
         --disable-vduse-blk-export --disable-libvduse \
         --disable-curl --enable-gnutls --enable-nettle --disable-gcrypt \
         --enable-zstd --enable-bzip2 --disable-fuse \
-        --disable-seccomp --disable-attr --disable-libnfs --disable-libssh \
+        --disable-attr --disable-libnfs --disable-libssh \
         --disable-rbd --disable-glusterfs --disable-capstone
 
     # keep set: ninja's regeneration after a meson.build change would otherwise pick up host libraries

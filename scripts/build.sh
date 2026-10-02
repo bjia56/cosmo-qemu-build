@@ -8,7 +8,7 @@
 # Requirements (a Linux build host with bash 4 or later):
 #   - cosmocc compiler toolchain (https://cosmo.zip/pub/cosmocc/), tested with
 #     4.0.2; the macOS loader patch (compat/ape) is written for that release
-#   - git, curl, tar, sed, make, patch, zip, bzip2, ninja, python3, sha256sum,
+#   - git, curl, tar, sed, make, patch, zip, bzip2, ninja, python3, sha256sum, gperf,
 #     meson (>= 1.5), pkg-config
 #   - qemu-aarch64-static for aarch64 configure-time probes (or EXE_WRAPPER_aarch64)
 #   - Linux kernel headers per host architecture (for KVM): linux-libc-dev and
@@ -130,6 +130,11 @@ LIBSLIRP_VERSION="4.9.3"
 LIBSLIRP_URL="${UBUNTU_POOL}/libs/libslirp/libslirp_${LIBSLIRP_VERSION}.orig.tar.bz2"
 LIBSLIRP_SHA256="c82e22c73bdc3f2c038e538d4f0c9c2166defb2402212d61bb7cb1b530ba952f"
 
+# libseccomp (-sandbox on): the GitHub release tarball
+LIBSECCOMP_VERSION="2.6.0"
+LIBSECCOMP_URL="https://github.com/seccomp/libseccomp/releases/download/v${LIBSECCOMP_VERSION}/libseccomp-${LIBSECCOMP_VERSION}.tar.gz"
+LIBSECCOMP_SHA256="83b6085232d1588c379dc9b9cae47bb37407cf262e6e74993c61ba72d2a784dc"
+
 # Cosmopolitan's license, for the notices
 COSMOPOLITAN_VERSION="4.0.2"
 COSMOPOLITAN_LICENSE_URL="https://raw.githubusercontent.com/jart/cosmopolitan/${COSMOPOLITAN_VERSION}/LICENSE"
@@ -159,7 +164,7 @@ echo "QEMU version: ${QEMU_VERSION}"
 echo "glib version: ${GLIB_VERSION}"
 echo ""
 
-for tool in cosmocc apelink assimilate fixupobj git curl tar sed make patch zip unzip bzip2 ninja python3 meson pkg-config sha256sum autoreconf xz cmake; do
+for tool in cosmocc apelink assimilate fixupobj git curl tar sed make patch zip unzip bzip2 ninja python3 meson pkg-config sha256sum autoreconf xz cmake gperf; do
     command -v "$tool" &>/dev/null || die "$tool not found in PATH
 For cosmocc see https://cosmo.zip/pub/cosmocc/ (or a jart/cosmopolitan GitHub release)"
 done
@@ -208,6 +213,7 @@ download "${LIBJPEG_TURBO_SHA256}" "libjpeg-turbo-${LIBJPEG_TURBO_VERSION}.tar.g
 download "${GNUTLS_SHA256}" "gnutls-${GNUTLS_VERSION}.tar.xz" "${GNUTLS_URL}"
 download "${SDL2_SHA256}" "sdl2-${SDL2_VERSION}.tar.gz" "${SDL2_URL}"
 download "${LIBSLIRP_SHA256}" "libslirp-${LIBSLIRP_VERSION}.tar.bz2" "${LIBSLIRP_URL}"
+download "${LIBSECCOMP_SHA256}" "libseccomp-${LIBSECCOMP_VERSION}.tar.gz" "${LIBSECCOMP_URL}"
 download "${COSMOPOLITAN_LICENSE_SHA256}" "cosmopolitan-LICENSE" "${COSMOPOLITAN_LICENSE_URL}"
 mkdir "${SRC_DIR}/zlib-${ZLIB_VERSION}"
 tar -xf "${DL_DIR}/zlib-${ZLIB_VERSION}.tar.gz" -C "${SRC_DIR}/zlib-${ZLIB_VERSION}" --strip-components=1
@@ -222,6 +228,7 @@ tar -xf "${DL_DIR}/libjpeg-turbo-${LIBJPEG_TURBO_VERSION}.tar.gz" -C "${SRC_DIR}
 tar -xf "${DL_DIR}/gnutls-${GNUTLS_VERSION}.tar.xz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/sdl2-${SDL2_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/libslirp-${LIBSLIRP_VERSION}.tar.bz2" -C "${SRC_DIR}"
+tar -xf "${DL_DIR}/libseccomp-${LIBSECCOMP_VERSION}.tar.gz" -C "${SRC_DIR}"
 
 # Fail early for a QEMU version that has no patches
 [ -d "${PROJECT_ROOT}/patches/qemu/${QEMU_VERSION}" ] \
@@ -233,8 +240,10 @@ clone_tag "${QEMU_REPO}" "${QEMU_VERSION}" "${SRC_DIR}/qemu" "${QEMU_COMMIT}"
 
 apply_patches glib "${GLIB_VERSION}" "${SRC_DIR}/glib"
 apply_patches libslirp "${LIBSLIRP_VERSION}" "${SRC_DIR}/libslirp-v${LIBSLIRP_VERSION}"
+apply_patches libseccomp "${LIBSECCOMP_VERSION}" "${SRC_DIR}/libseccomp-${LIBSECCOMP_VERSION}"
 apply_patches qemu "${QEMU_VERSION}" "${SRC_DIR}/qemu"
 stage_scanf_shim
+stage_seccomp_shim
 
 FIRMWARE_DIR="${BUILD_DIR}/firmware"
 firmware_done=0

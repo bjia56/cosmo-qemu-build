@@ -71,6 +71,16 @@ requirement on macOS) have never been run.
 Device nodes and symlink containment are limited off Linux (patch `15`). Only Linux has been run: "expected"
 means the macOS and Windows code is written for it but untested.
 
+## Sandboxing
+
+`-sandbox on` (seccomp, libseccomp 2.6.0) works on Linux hosts. For the strictest filter use
+`-sandbox on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny`: the system emulator smoke
+tests pass with it, and it stops the monitor from spawning processes (`migrate "exec:..."`). It is off unless
+you ask for it. Off Linux the filter cannot be installed, so `-sandbox on` fails rather than running unconfined
+(not yet tried on macOS or Windows). Only the x86_64 half was run with the sandbox, and KVM is untested under
+it: the aarch64 halves run under qemu-user in CI, which does not enforce seccomp. There is no sandbox of any
+kind on macOS or Windows.
+
 ## Getting the binaries
 
 The [Build workflow](.github/workflows/build.yml) uploads one artifact per program. Downloads lose the
@@ -81,7 +91,7 @@ executable bit: `chmod +x qemu-*.com`, or run `sh ./qemu-img.com`. License texts
 
 Linux with bash 4+. Requires [cosmocc](https://cosmo.zip/pub/cosmocc/) with
 `assimilate`, `apelink` and `fixupobj` (4.0.2; the macOS loader patch is written for that release), plus `git`, `curl`, `tar`, `sed`, `make`, `patch`, `zip`, `bzip2`, `ninja`, `pkg-config`,
-`python3`, `cmake`, `7z`, `unzip`, `sha256sum`, `meson` (>= 1.5, for example from `pipx install meson`), `qemu-aarch64-static`
+`python3`, `cmake`, `gperf`, `7z`, `unzip`, `sha256sum`, `meson` (>= 1.5, for example from `pipx install meson`), `qemu-aarch64-static`
 (to run aarch64 configure-time probes) and the Linux kernel headers for each host architecture
 (`linux-libc-dev` and `linux-libc-dev-arm64-cross` on Debian/Ubuntu):
 

@@ -143,6 +143,14 @@ EOF
             --prefix="${S}" --default-library=static --wrap-mode=nodownload
         run_logged "${arch}-libslirp-build" ninja -C "${B}/libslirp" -j"${JOBS}" install
         stage_kernel_headers "${arch}" "${S}"
+        # libseccomp (-sandbox on): needs the kernel headers just staged. Cosmopolitan hides
+        # prctl() and syscall() behind _GNU_SOURCE, and its syscall() is a stub (see the patch).
+        mkdir -p "${B}/libseccomp" && cd "${B}/libseccomp"
+        run_logged "${arch}-libseccomp-configure" env CC="${cc}" AR="${ar}" RANLIB="${ranlib}" \
+            CPPFLAGS="-I${S}/include -D_GNU_SOURCE" \
+            "${SRC_DIR}/libseccomp-${LIBSECCOMP_VERSION}/configure" --prefix="${S}" --host=${host_triplet} \
+            --enable-static --disable-shared --disable-python
+        run_logged "${arch}-libseccomp" bash -c "make -j${JOBS} -C src install && make -C include install && make install-pkgconfDATA"
         stage_sdl2_headers "${S}"
         # WHPX only exists for x86_64 guests on x86_64 (Windows) hosts
         if [ "${arch}" = "x86_64" ] && [[ " ${SYSTEM_TARGETS} " == *" x86_64 "* ]]; then

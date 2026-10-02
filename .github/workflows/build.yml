@@ -34,7 +34,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build cmake p7zip-full pkg-config zip bzip2 patch autoconf automake libtool libltdl-dev \
+          sudo apt-get install -y ninja-build cmake p7zip-full pkg-config zip bzip2 patch autoconf automake libtool libltdl-dev gperf \
             qemu-user-static linux-libc-dev linux-libc-dev-arm64-cross
           pipx install meson
 
