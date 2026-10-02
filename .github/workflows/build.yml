@@ -38,11 +38,11 @@ jobs:
             qemu-user-static linux-libc-dev linux-libc-dev-arm64-cross
           pipx install meson
 
+      # The smoke tests run in the smoke job, on every OS, from the uploaded executables
       - name: Build
         run: ./scripts/build.sh
-
-      - name: Test the aarch64 halves
-        run: ./scripts/smoke_test_aarch64.sh out
+        env:
+          SMOKE_TESTS: '0'
 
       - name: Upload qemu-img
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -73,9 +73,76 @@ jobs:
           path: build/logs/
           if-no-files-found: ignore
 
+  smoke:
+    name: Smoke tests (${{ matrix.name }})
+    needs: build
+    runs-on: ${{ matrix.os }}
+    # Windows and macOS have not been run in CI before: they report failures without blocking the release
+    continue-on-error: ${{ matrix.experimental }}
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            os: ubuntu-latest
+            qemu-user: false
+            experimental: false
+          # the aarch64 halves, run under qemu-user
+          - name: Linux aarch64
+            os: ubuntu-latest
+            qemu-user: true
+            experimental: false
+          - name: Windows x86_64
+            os: windows-latest
+            qemu-user: false
+            experimental: true
+          - name: macOS arm64
+            os: macos-latest
+            qemu-user: false
+            experimental: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # assimilate turns a copy of the executable into a native aarch64 ELF
+      - name: Setup cosmocc
+        if: matrix.qemu-user
+        uses: bjia56/setup-cosmocc@c0097c34319baeca1b41cc857ec5c643f2f5baf6 # v0.0.6
+        with:
+          version: ${{ env.cosmocc_version }}
+
+      - name: Install qemu-user
+        if: matrix.qemu-user
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+
+      - name: Download the executables
+        run: |
+          mkdir dist
+          for n in qemu-img qemu-system-x86_64 qemu-system-aarch64; do
+            gh run download "$GITHUB_RUN_ID" --name "$n" --dir dist
+          done
+          ls -l dist
+
+      - name: Test the aarch64 halves
+        if: matrix.qemu-user
+        run: ./scripts/smoke_test_aarch64.sh dist
+
+      - name: Test
+        if: ${{ !matrix.qemu-user }}
+        run: ./scripts/smoke_test_all.sh dist
+
   release:
     name: Publish release
-    needs: build
+    needs: [build, smoke]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-slim
     permissions:

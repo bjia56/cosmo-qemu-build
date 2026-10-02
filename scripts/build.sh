@@ -22,6 +22,8 @@
 #                        (default: "x86_64 aarch64"; empty builds qemu-img only)
 #   BUILD_DIR            build tree location (default: ./build)
 #   OUT_DIR              output location (default: ./out)
+#   SMOKE_TESTS          0 skips the x86_64 smoke tests that follow the build (default: 1);
+#                        CI runs them separately, on each OS, from the built executables
 #   EXE_WRAPPER_<arch>   command used to run <arch> test programs
 #   KERNEL_HEADERS_<arch> kernel header tree for <arch>
 #   QEMU_VERSION         QEMU tag to build; only versions with a directory in
@@ -49,6 +51,7 @@ TOOLS_DIR="${BUILD_DIR}/tools"
 JOBS="${JOBS:-$(nproc)}"
 ARCHES="${ARCHES:-x86_64 aarch64}"
 SYSTEM_TARGETS="${SYSTEM_TARGETS-x86_64 aarch64}"
+SMOKE_TESTS="${SMOKE_TESTS:-1}"
 
 # The QEMU release to build: a tag from https://gitlab.com/qemu-project/qemu/-/tags
 # (patches/qemu/<tag> holds the changes for it)
@@ -297,7 +300,7 @@ if [ -n "${SYSTEM_TARGETS}" ]; then
 fi
 
 # Smoke tests on x86_64 hosts only; CI runs the aarch64 halves
-if [[ " ${ARCHES} " == *" x86_64 "* ]] && [ "$(uname -m)" = "x86_64" ]; then
+if [ "${SMOKE_TESTS}" = 1 ] && [[ " ${ARCHES} " == *" x86_64 "* ]] && [ "$(uname -m)" = "x86_64" ]; then
     echo ""
     echo "Testing qemu-img..."
     "${SCRIPT_DIR}/smoke_test.sh" "sh ${OUT_DIR}/qemu-img.com"
@@ -306,6 +309,11 @@ if [[ " ${ARCHES} " == *" x86_64 "* ]] && [ "$(uname -m)" = "x86_64" ]; then
         echo "Testing qemu-system-${guest}..."
         "${SCRIPT_DIR}/smoke_test_system.sh" "sh ${OUT_DIR}/qemu-system-${guest}.com" "${guest}"
     done
+    if [ -n "${SYSTEM_TARGETS}" ]; then
+        echo ""
+        echo "Testing -sandbox..."
+        "${SCRIPT_DIR}/smoke_test_sandbox.sh" "sh ${OUT_DIR}/qemu-system-${SYSTEM_TARGETS%% *}.com"
+    fi
 fi
 
 echo ""

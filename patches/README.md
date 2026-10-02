@@ -47,6 +47,7 @@ emulators.
 | `17-cosmo-sdl2-dlopen` | `-display sdl` with SDL2 loaded at run time: `ui/sdl2-cosmo.c` wraps the ~50 SDL functions the 2D renderer calls through `cosmo_dlsym()`/`cosmo_dltramp()`. No audio or OpenGL (SDL audio takes callbacks), and never the default display, so headless hosts keep working. |
 | `18-cosmo-sdl2-bundled-library` | On Windows and macOS the executable embeds the official SDL2 (`share/qemu/sdl2/`) and tries it first (on Windows, `SDL2.dll` by name searches the current directory and `PATH`). It is extracted to the user cache directory, named by SHA-256 and reused only if the contents match; written under a temporary name and renamed, 0600 in a 0700 directory, and a symlinked or foreign directory is refused. |
 | `19-cosmo-enable-seccomp` | `-sandbox on` for Linux hosts. The filter targets the Linux kernel, so `CLONE_*` and `CSIGNAL` come from `linux/sched.h` (Cosmopolitan has no public header for them) and `seccomp(2)` is a raw system call (`compat/seccomp`). Off Linux, `-sandbox on` fails to load the filter. |
+| `20-cosmo-sandbox-spawn-deny` | `-sandbox on,spawn=deny` on Windows and macOS, where there is no seccomp (`system/cosmo-sandbox.c`, loaded with `cosmo_dlopen`): a Seatbelt profile that denies `process-fork` and `process-exec*`, or a job object limited to one active process plus the child-process mitigation policy. Every other switch is refused, and `-sandbox on` without `spawn=deny` is an error, so the flag never silently does nothing. |
 
 ### Building system emulators
 

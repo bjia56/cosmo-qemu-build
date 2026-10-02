@@ -22,8 +22,9 @@ The system emulators choose an accelerator at run time, and TCG (software emulat
 
 Use `-machine accel=kvm:tcg` (or `whpx:tcg`, `hvf:tcg`) to try an accelerator and fall back to TCG.
 
-CI builds and tests on Linux only (x86_64 natively, aarch64 under qemu-user). KVM, WHPX, HVF and the
-macOS and Windows startup paths need real hardware and are untested.
+CI builds on Linux, then runs the smoke tests on Linux (x86_64 natively, aarch64 under qemu-user), Windows
+and macOS runners. The Windows and macOS legs are new and do not block the release yet. KVM, WHPX and HVF
+need real hardware and are untested.
 
 HVF needs the `com.apple.security.hypervisor` entitlement on the loader that Cosmopolitan compiles on first
 run (needs the Xcode command line tools). The executables use their own loader, `.q.ape-01` in
@@ -73,13 +74,26 @@ means the macOS and Windows code is written for it but untested.
 
 ## Sandboxing
 
-`-sandbox on` (seccomp, libseccomp 2.6.0) works on Linux hosts. For the strictest filter use
+`-sandbox on` is enforced differently per host:
+
+| Host | Mechanism | Supported switches |
+| --- | --- | --- |
+| Linux | seccomp (libseccomp 2.6.0) | all: `obsolete`, `elevateprivileges`, `spawn`, `resourcecontrol` |
+| macOS | Seatbelt profile (`sandbox_init`) | `spawn=deny` only |
+| Windows | job object limited to one process, plus the child-process mitigation policy | `spawn=deny` only |
+
+On Linux, for the strictest filter use
 `-sandbox on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny`: the system emulator smoke
-tests pass with it, and it stops the monitor from spawning processes (`migrate "exec:..."`). It is off unless
-you ask for it. Off Linux the filter cannot be installed, so `-sandbox on` fails rather than running unconfined
-(not yet tried on macOS or Windows). Only the x86_64 half was run with the sandbox, and KVM is untested under
-it: the aarch64 halves run under qemu-user in CI, which does not enforce seccomp. There is no sandbox of any
-kind on macOS or Windows.
+tests pass with it. `spawn=deny` stops the monitor from starting processes (`migrate "exec:..."` fails with
+"Failed to fork"). On macOS and Windows only `spawn=deny` exists, so `-sandbox on,spawn=deny` is the option to
+use; every other switch is refused and `-sandbox on` alone is an error there, so the flag never silently does
+nothing. Neither restricts files or the network. The sandbox is off unless you ask for it. FreeBSD, OpenBSD
+and NetBSD have none.
+
+Only the Linux x86_64 half has been run with the sandbox, and KVM is untested under it. The aarch64 halves
+run under qemu-user in CI, which does not enforce seccomp. The macOS and Windows backends are written from
+the platform documentation and have never run: they are compiled in and refused on other hosts, and the CI
+smoke job runs them on Windows and macOS runners without blocking the release until they are known to pass.
 
 ## Getting the binaries
 
@@ -98,9 +112,10 @@ Linux with bash 4+. Requires [cosmocc](https://cosmo.zip/pub/cosmocc/) with
 ```bash
 ./scripts/build.sh                       # everything, into ./out
 ./scripts/smoke_test_aarch64.sh out      # the aarch64 halves, under qemu-user
+./scripts/smoke_test_all.sh out          # every smoke test, natively (Linux, macOS, Windows under Git Bash)
 ```
 
-`build.sh` runs the x86_64 smoke tests itself. It builds the dependencies per architecture into a static
+`build.sh` runs the x86_64 smoke tests itself (`SMOKE_TESTS=0` skips them). It builds the dependencies per architecture into a static
 sysroot, builds QEMU from a tagged release, and joins both architectures with `apelink`. Cosmopolitan-specific
 changes are in [`patches/`](patches); [`compat/`](compat) holds header shims and the macOS loader patch.
 Sources are checked against pinned commits and downloads against pinned SHA-256 sums.
