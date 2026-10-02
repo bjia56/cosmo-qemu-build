@@ -65,9 +65,12 @@ build_deps() {
     mkdir -p "${B}/bzip2" "${S}/include" "${S}/lib" && cp -r "${SRC_DIR}/bzip2-${BZIP2_VERSION}/." "${B}/bzip2"
     run_logged "${arch}-bzip2" bash -c "cd '${B}/bzip2' && make -j${JOBS} CC='${cc}' AR='${ar}' RANLIB='${ranlib}' libbz2.a && cp bzlib.h '${S}/include/' && cp libbz2.a '${S}/lib/'"
 
-    # zstd's BMI2 assembly is left out: cosmocc rejects the (empty) object file
+    # zstd's BMI2 assembly is left out: cosmocc rejects the (empty) object file.
+    # DYNAMIC_BMI2=0 drops its run-time BMI2 variants too: GCC ignores -mstack-protector-guard=global
+    # in functions with a target() attribute and falls back to the canary at %fs:0x28. That works on
+    # Linux (%fs is the TIB there) but faults on Windows, where %fs is 0.
     mkdir -p "${B}/zstd" && cp -r "${SRC_DIR}/zstd-${ZSTD_VERSION}/." "${B}/zstd"
-    run_logged "${arch}-zstd" bash -c "cd '${B}/zstd/lib' && make -j${JOBS} ZSTD_NO_ASM=1 CC='${cc}' AR='${ar}' PREFIX='${S}' libzstd.a libzstd.pc && make ZSTD_NO_ASM=1 CC='${cc}' AR='${ar}' PREFIX='${S}' install-static install-pc install-includes"
+    run_logged "${arch}-zstd" bash -c "cd '${B}/zstd/lib' && make -j${JOBS} ZSTD_NO_ASM=1 MOREFLAGS=-DDYNAMIC_BMI2=0 CC='${cc}' AR='${ar}' PREFIX='${S}' libzstd.a libzstd.pc && make ZSTD_NO_ASM=1 MOREFLAGS=-DDYNAMIC_BMI2=0 CC='${cc}' AR='${ar}' PREFIX='${S}' install-static install-pc install-includes"
 
     # libffi: static trampolines need a raw mmap of the exec file, unsupported here.
     # The orig tarball has no configure script: generate it in a per-arch copy.

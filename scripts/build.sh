@@ -167,7 +167,7 @@ echo "QEMU version: ${QEMU_VERSION}"
 echo "glib version: ${GLIB_VERSION}"
 echo ""
 
-for tool in cosmocc apelink assimilate fixupobj git curl tar sed make patch zip unzip bzip2 ninja python3 meson pkg-config sha256sum autoreconf xz cmake gperf; do
+for tool in cosmocc apelink assimilate fixupobj git curl tar sed make patch zip unzip bzip2 ninja python3 meson pkg-config sha256sum autoreconf xz cmake gperf objdump; do
     command -v "$tool" &>/dev/null || die "$tool not found in PATH
 For cosmocc see https://cosmo.zip/pub/cosmocc/ (or a jart/cosmopolitan GitHub release)"
 done

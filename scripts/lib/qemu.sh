@@ -2,6 +2,18 @@
 # SPDX-License-Identifier: MIT
 # Configuring and building QEMU for one host architecture. Sourced by scripts/build.sh.
 
+# check_no_tls_canary <elf>: no function may read the default canary at %fs:0x28. The compiler shims
+# use a global canary (compat/ssp), but GCC drops that for functions with a target() attribute, and
+# the stock canary faults where %fs is not the TIB (Windows).
+check_no_tls_canary() {
+    local elf=$1 bad
+    bad="$(objdump -d --no-show-raw-insn "${elf}" \
+        | awk '/^[0-9a-f]+ <.*>:$/ { fn = $2 } /%fs:0x28/ { print fn }' | sort -u)"
+    [ -z "${bad}" ] || die "${elf##*/} reads the default stack protector canary (%fs:0x28) in:
+${bad}
+(a function with a target() attribute, such as a run-time CPU feature variant?)"
+}
+
 build_qemu() {
     local arch=$1 S=$2 B=$3
     local qb="${B}/qemu"
@@ -74,6 +86,10 @@ build_qemu() {
     unset PKG_CONFIG_PATH PKG_CONFIG_LIBDIR
 
     [ -f qemu-img ] || die "qemu-img not found after ${arch} build"
+    if [ "${arch}" = x86_64 ]; then
+        check_no_tls_canary qemu-img
+        for guest in ${SYSTEM_TARGETS}; do check_no_tls_canary "qemu-system-${guest}"; done
+    fi
     cp qemu-img "${B}/qemu-img.elf"
     for guest in ${SYSTEM_TARGETS}; do
         [ -f "qemu-system-${guest}" ] || die "qemu-system-${guest} not found after ${arch} build"
