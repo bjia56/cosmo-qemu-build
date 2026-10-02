@@ -41,7 +41,7 @@ build_qemu() {
 
     #  --prefix=/zip, --disable-relocatable: data files come from the embedded zip, not relative to the executable
     #  --enable-stack-protector: the compiler shims add the global canary (see compat/ssp);
-    #     cosmocc's TLS canary is unusable in constructors, and aarch64 has no guard symbol
+    #     cosmocc's TLS canary reads %fs but cosmo's TLS base is %gs, and aarch64 has no guard symbol
     #  --with-coroutine=ucontext: the sigaltstack backend deadlocks under cosmo
     #  --disable-plugins: TCG plugins need dlopen
     #  --enable-gnutls --enable-nettle: crypto stays on nettle; gnutls only does TLS

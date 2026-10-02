@@ -2,8 +2,10 @@
 // Global stack protector canary for -fstack-protector -mstack-protector-guard=global.
 //
 // The default canary location does not work under cosmocc:
-//   x86_64   %fs:0x28, but constructors run before TLS is set up (the first protected
-//            function dereferences a null %fs base).
+//   x86_64   GCC reads the canary at %fs:0x28, but cosmo's TLS base is %gs (on Windows and
+//            OpenBSD/NetBSD its accesses are rewritten at startup, and only the
+//            `mov %gs:0x30,%reg` pattern is). %fs is never set, so the first protected
+//            function dereferences a null base.
 //   aarch64  GCC reads a global __stack_chk_guard, which cosmocc's libc does not define.
 // libcosmo's x86_64 stackchkguard.o does define it, but its _init___stack_chk_guard stub
 // stores through %rdi in the startup chain and corrupts a return address (crash in
