@@ -11,6 +11,10 @@ on:
         description: 'Run id to take the executables from: skips the build and only runs the smoke tests'
         required: false
         default: ''
+      debug_windows:
+        description: 'TEMPORARY: run only the Windows qemu-img zstd diagnostics'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -83,7 +87,7 @@ jobs:
     name: Smoke tests (${{ matrix.name }})
     needs: build
     # skipped builds (artifacts_run_id) still run the tests
-    if: ${{ !cancelled() && needs.build.result != 'failure' }}
+    if: ${{ !cancelled() && needs.build.result != 'failure' && inputs.debug_windows == '' }}
     runs-on: ${{ matrix.os }}
     # Windows reports failures without blocking the release: qemu-img crashes on a zstd qcow2 there
     continue-on-error: ${{ matrix.experimental }}
@@ -143,6 +147,29 @@ jobs:
         if: ${{ !cancelled() }}
         timeout-minutes: 15
         run: ./scripts/smoke_test_all.sh dist system-sandbox
+
+  # TEMPORARY: remove once the Windows qemu-img zstd crash is understood
+  debug-windows:
+    name: Debug the Windows zstd crash
+    if: ${{ inputs.debug_windows != '' }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Diagnose
+        run: |
+          mkdir dist
+          gh run download "${{ inputs.artifacts_run_id }}" --repo "$GITHUB_REPOSITORY" --name qemu-img --dir dist
+          cp dist/qemu-img.com dist/qemu-img.exe
+          ./scripts/debug/windows_zstd.sh "$PWD/dist/qemu-img.exe"
 
   release:
     name: Publish release
