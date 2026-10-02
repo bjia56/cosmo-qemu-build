@@ -93,36 +93,19 @@ jobs:
         include:
           - name: Linux x86_64
             os: ubuntu-latest
-            qemu-user: false
             experimental: false
-          # the aarch64 halves, run under qemu-user
+          # runs the aarch64 halves natively
           - name: Linux aarch64
-            os: ubuntu-latest
-            qemu-user: true
+            os: ubuntu-24.04-arm
             experimental: false
           - name: Windows x86_64
             os: windows-latest
-            qemu-user: false
             experimental: true
           - name: macOS arm64
             os: macos-latest
-            qemu-user: false
             experimental: true
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      # assimilate turns a copy of the executable into a native aarch64 ELF
-      - name: Setup cosmocc
-        if: matrix.qemu-user
-        uses: bjia56/setup-cosmocc@c0097c34319baeca1b41cc857ec5c643f2f5baf6 # v0.0.6
-        with:
-          version: ${{ env.cosmocc_version }}
-
-      - name: Install qemu-user
-        if: matrix.qemu-user
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-user-static
 
       - name: Download the executables
         run: |
@@ -132,12 +115,7 @@ jobs:
           done
           ls -l dist
 
-      - name: Test the aarch64 halves
-        if: matrix.qemu-user
-        run: ./scripts/smoke_test_aarch64.sh dist
-
       - name: Test
-        if: ${{ !matrix.qemu-user }}
         run: ./scripts/smoke_test_all.sh dist
 
   release:
