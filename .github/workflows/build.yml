@@ -85,7 +85,7 @@ jobs:
     # skipped builds (artifacts_run_id) still run the tests
     if: ${{ !cancelled() && needs.build.result != 'failure' }}
     runs-on: ${{ matrix.os }}
-    # Windows and macOS have not been run in CI before: they report failures without blocking the release
+    # Windows reports failures without blocking the release: qemu-img crashes on a zstd qcow2 there
     continue-on-error: ${{ matrix.experimental }}
     permissions:
       contents: read
@@ -112,7 +112,7 @@ jobs:
             experimental: true
           - name: macOS arm64
             os: macos-latest
-            experimental: true
+            experimental: false
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 

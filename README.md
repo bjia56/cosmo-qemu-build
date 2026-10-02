@@ -22,9 +22,10 @@ The system emulators choose an accelerator at run time, and TCG (software emulat
 
 Use `-machine accel=kvm:tcg` (or `whpx:tcg`, `hvf:tcg`) to try an accelerator and fall back to TCG.
 
-CI builds on Linux, then runs the smoke tests on Linux (x86_64 natively, aarch64 under qemu-user), Windows
-and macOS runners. The Windows and macOS legs are new and do not block the release yet. KVM, WHPX and HVF
-need real hardware and are untested.
+CI builds on Linux, then runs the smoke tests on native runners: Linux x86_64 and aarch64, macOS arm64 and
+Windows x86_64. The Windows leg does not block the release yet, because `qemu-img` crashes there on a
+zstd-compressed qcow2 (the emulators pass). A WHPX guest boots on the Windows runner. KVM and HVF need
+hardware the runners do not provide and are untested.
 
 HVF needs the `com.apple.security.hypervisor` entitlement on the loader that Cosmopolitan compiles on first
 run (needs the Xcode command line tools). The executables use their own loader, `.q.ape-01` in
@@ -90,10 +91,9 @@ use; every other switch is refused and `-sandbox on` alone is an error there, so
 nothing. Neither restricts files or the network. The sandbox is off unless you ask for it. FreeBSD, OpenBSD
 and NetBSD have none.
 
-Only the Linux x86_64 half has been run with the sandbox, and KVM is untested under it. The aarch64 halves
-run under qemu-user in CI, which does not enforce seccomp. The macOS and Windows backends are written from
-the platform documentation and have never run: they are compiled in and refused on other hosts, and the CI
-smoke job runs them on Windows and macOS runners without blocking the release until they are known to pass.
+CI runs the sandbox tests natively on Linux x86_64 and aarch64, macOS arm64 and Windows x86_64: the system
+emulator suite passes under the sandbox on all four, and `spawn=deny` is shown to block starting a process
+(a WHPX boot included on Windows). KVM is untested under the sandbox.
 
 ## Getting the binaries
 

@@ -100,11 +100,13 @@ else
     # Nothing here maps to seccomp's other switches: they must be refused, never ignored
     for opt in on elevateprivileges=deny resourcecontrol=deny; do
         case "$opt" in on) args="on" ;; *) args="on,spawn=deny,$opt" ;; esac
-        if run_monitor "info version" -sandbox "$args"; then
-            fail "-sandbox $args must be refused on this host"
-        fi
+        if run_monitor "info version" -sandbox "$args"; then status=0; else status=$?; fi
         grep -a -q -E 'does nothing|not supported' out.txt \
-            || fail "-sandbox $args reports why it is refused"
+            || fail "-sandbox $args must be refused with an error saying why"
+        # a Windows process reports exit status 0 to Git Bash even when QEMU exits with 1
+        if [ "$status" -eq 0 ] && [ "$host" != windows ]; then
+            fail "-sandbox $args must exit with an error on this host"
+        fi
         pass "-sandbox $args is refused with a clear error"
     done
 fi
