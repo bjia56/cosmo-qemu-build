@@ -23,9 +23,8 @@ The system emulators choose an accelerator at run time, and TCG (software emulat
 Use `-machine accel=kvm:tcg` (or `whpx:tcg`, `hvf:tcg`) to try an accelerator and fall back to TCG.
 
 CI builds on Linux, then runs the smoke tests on native runners: Linux x86_64 and aarch64, macOS arm64 and
-Windows x86_64. The Windows leg does not block the release yet, because `qemu-img` crashes there on a
-zstd-compressed qcow2 (the emulators pass). A WHPX guest boots on the Windows runner. KVM and HVF need
-hardware the runners do not provide and are untested.
+Windows x86_64, and all of them must pass for a release. A WHPX guest boots on the Windows runner. KVM and
+HVF need hardware the runners do not provide and are untested.
 
 HVF needs the `com.apple.security.hypervisor` entitlement on the loader that Cosmopolitan compiles on first
 run (needs the Xcode command line tools). The executables use their own loader, `.q.ape-01` in
