@@ -31,8 +31,20 @@ else
     [ "$host" = linux ] && sandbox=on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny
 fi
 
-echo "== qemu-img"
-"${SCRIPT_DIR}/smoke_test.sh" "$(cmd qemu-img)"
+failed=""
+# step <name> <command...>: a failing test script does not stop the others
+step() {
+    name=$1; shift
+    echo ""
+    echo "== $name"
+    if ! "$@"; then
+        echo "FAILED: $name" >&2
+        failed="${failed}
+  $name"
+    fi
+}
+
+step "qemu-img" "${SCRIPT_DIR}/smoke_test.sh" "$(cmd qemu-img)"
 
 guests=""
 for guest in x86_64 aarch64; do
@@ -41,20 +53,19 @@ done
 [ -n "$guests" ] || { echo "no qemu-system-*.com in $DIR" >&2; exit 2; }
 
 for guest in $guests; do
-    echo ""
-    echo "== qemu-system-${guest}"
-    "${SCRIPT_DIR}/smoke_test_system.sh" "$(cmd "qemu-system-${guest}")" "$guest"
+    step "qemu-system-${guest}" "${SCRIPT_DIR}/smoke_test_system.sh" "$(cmd "qemu-system-${guest}")" "$guest"
 done
 
-echo ""
-echo "== -sandbox"
 set -- $guests
-"${SCRIPT_DIR}/smoke_test_sandbox.sh" "$(cmd "qemu-system-$1")"
+step "-sandbox" "${SCRIPT_DIR}/smoke_test_sandbox.sh" "$(cmd "qemu-system-$1")"
 for guest in $guests; do
-    echo ""
-    echo "== qemu-system-${guest} with -sandbox ${sandbox}"
-    "${SCRIPT_DIR}/smoke_test_system.sh" "$(cmd "qemu-system-${guest}") -sandbox ${sandbox}" "$guest"
+    step "qemu-system-${guest} with -sandbox ${sandbox}" \
+        "${SCRIPT_DIR}/smoke_test_system.sh" "$(cmd "qemu-system-${guest}") -sandbox ${sandbox}" "$guest"
 done
 
 echo ""
+if [ -n "$failed" ]; then
+    echo "Smoke tests FAILED on ${host}:${failed}" >&2
+    exit 1
+fi
 echo "All smoke tests passed on ${host}"
