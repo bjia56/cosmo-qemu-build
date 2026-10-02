@@ -43,9 +43,9 @@ build_qemu() {
             hvf_flag="--enable-hvf"
             extra_cflags="${extra_cflags} -I${S}/include/hvf"
         fi
-        system_flags=(--target-list="${targets%,}" --enable-slirp --enable-virtfs --enable-vnc ${kvm_flag} ${whpx_flag} ${hvf_flag})
+        system_flags=(--target-list="${targets%,}" --enable-slirp --enable-virtfs --enable-vnc --enable-vnc-jpeg ${kvm_flag} ${whpx_flag} ${hvf_flag})
     else
-        system_flags=(--disable-system --disable-slirp --disable-virtfs --disable-vnc)
+        system_flags=(--disable-system --disable-slirp --disable-virtfs --disable-vnc --disable-vnc-jpeg)
     fi
 
     # Notes on the flags:
@@ -57,8 +57,8 @@ build_qemu() {
     #  --disable-plugins          TCG plugins are loaded with dlopen
     #  --enable-virtfs            9p file sharing, with the Cosmopolitan host support from
     #                             patch 15 (its extended attributes only work on Linux)
-    #  --enable-vnc               the built-in VNC server (needs only pixman and zlib; no
-    #                             TLS, SASL or JPEG, those libraries are not built)
+    #  --enable-vnc               the built-in VNC server (pixman, zlib and libjpeg-turbo;
+    #                             no TLS or SASL, those libraries are not built)
     #  the rest strips everything cosmocc cannot build or QEMU does not need
     run_logged "${arch}-qemu-configure" env \
         PKG_CONFIG_PATH="${S}/lib/pkgconfig" PKG_CONFIG_LIBDIR="${S}/lib/pkgconfig" \

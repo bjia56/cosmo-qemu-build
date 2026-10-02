@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # SPDX-License-Identifier: MIT
-# Static dependencies (zlib, libpng, pcre2, nettle, bzip2, zstd, libffi, glib, pixman, libslirp) built into a per-architecture sysroot.
+# Static dependencies (zlib, libpng, libjpeg-turbo, pcre2, nettle, bzip2, zstd, libffi, glib, pixman, libslirp) built into a per-architecture sysroot.
 # Sourced by scripts/build.sh; relies on the variables it defines.
 
 exe_wrapper_for() {
@@ -30,6 +30,16 @@ build_deps() {
     # libpng (screendump -f png); needs the zlib built above
     mkdir -p "${B}/libpng" && cd "${B}/libpng"
     run_logged "${arch}-libpng" bash -c "CPPFLAGS='-I${S}/include' LDFLAGS='-L${S}/lib' '${SRC_DIR}/libpng-${LIBPNG_VERSION}/configure' --prefix='${S}' --host=${host_triplet} --disable-shared --enable-static --disable-tools --disable-hardware-optimizations && make -j${JOBS} && make install"
+
+    # libjpeg-turbo (VNC lossy encoding). CMake only; no SIMD (assembler), no
+    # TurboJPEG API or Java, and a static library only.
+    run_logged "${arch}-libjpeg-turbo-configure" cmake -S "${SRC_DIR}/libjpeg-turbo-${LIBJPEG_TURBO_VERSION}" -B "${B}/libjpeg-turbo" -G Ninja \
+        -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR="${arch}" \
+        -DCMAKE_C_COMPILER="${cc}" -DCMAKE_AR="$(command -v "${ar}")" -DCMAKE_RANLIB="$(command -v "${ranlib}")" \
+        -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX="${S}" -DCMAKE_INSTALL_LIBDIR=lib \
+        -DENABLE_SHARED=0 -DENABLE_STATIC=1 -DWITH_SIMD=0 -DWITH_TURBOJPEG=0 -DWITH_JAVA=0
+    run_logged "${arch}-libjpeg-turbo" bash -c "cmake --build '${B}/libjpeg-turbo' -j${JOBS} && cmake --install '${B}/libjpeg-turbo'"
 
     # pcre2
     mkdir -p "${B}/pcre2" && cd "${B}/pcre2"

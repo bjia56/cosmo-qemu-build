@@ -139,6 +139,11 @@ PIXMAN_VERSION="0.46.4"
 PIXMAN_URL="${UBUNTU_POOL}/p/pixman/pixman_${PIXMAN_VERSION}.orig.tar.gz"
 PIXMAN_SHA256="d09c44ebc3bd5bee7021c79f922fe8fb2fb57f7320f55e97ff9914d2346a591c"
 
+# libjpeg-turbo (the lossy JPEG encoding of the VNC server), built without SIMD
+LIBJPEG_TURBO_VERSION="3.1.3"
+LIBJPEG_TURBO_URL="${UBUNTU_POOL}/libj/libjpeg-turbo/libjpeg-turbo_${LIBJPEG_TURBO_VERSION}.orig.tar.gz"
+LIBJPEG_TURBO_SHA256="3a13a5ba767dc8264bc40b185e41368a80d5d5f945944d1dbaa4b2fb0099f4e5"
+
 # libslirp (user-mode networking); the tarball unpacks to libslirp-v<version>
 LIBSLIRP_VERSION="4.9.3"
 LIBSLIRP_URL="${UBUNTU_POOL}/libs/libslirp/libslirp_${LIBSLIRP_VERSION}.orig.tar.bz2"
@@ -177,7 +182,7 @@ echo ""
 # Tool checks
 # ---------------------------------------------------------------------------
 
-for tool in cosmocc apelink assimilate fixupobj git curl tar sed make patch zip bzip2 ninja python3 meson pkg-config sha256sum autoreconf xz; do
+for tool in cosmocc apelink assimilate fixupobj git curl tar sed make patch zip bzip2 ninja python3 meson pkg-config sha256sum autoreconf xz cmake; do
     command -v "$tool" &>/dev/null || die "$tool not found in PATH
 For cosmocc see https://cosmo.zip/pub/cosmocc/ (or a jart/cosmopolitan GitHub release)"
 done
@@ -223,6 +228,7 @@ download "${NETTLE_SHA256}" "nettle-${NETTLE_VERSION}.tar.gz" "${NETTLE_URL}"
 download "${BZIP2_SHA256}" "bzip2-${BZIP2_VERSION}.tar.gz" "${BZIP2_URL}"
 download "${ZSTD_SHA256}" "zstd-${ZSTD_VERSION}.tar.xz" "${ZSTD_URL}"
 download "${PIXMAN_SHA256}" "pixman-${PIXMAN_VERSION}.tar.gz" "${PIXMAN_URL}"
+download "${LIBJPEG_TURBO_SHA256}" "libjpeg-turbo-${LIBJPEG_TURBO_VERSION}.tar.gz" "${LIBJPEG_TURBO_URL}"
 download "${LIBSLIRP_SHA256}" "libslirp-${LIBSLIRP_VERSION}.tar.bz2" "${LIBSLIRP_URL}"
 download "${COSMOPOLITAN_LICENSE_SHA256}" "cosmopolitan-LICENSE" "${COSMOPOLITAN_LICENSE_URL}"
 mkdir "${SRC_DIR}/zlib-${ZLIB_VERSION}"
@@ -234,6 +240,7 @@ tar -xf "${DL_DIR}/nettle-${NETTLE_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/bzip2-${BZIP2_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/zstd-${ZSTD_VERSION}.tar.xz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/pixman-${PIXMAN_VERSION}.tar.gz" -C "${SRC_DIR}"
+tar -xf "${DL_DIR}/libjpeg-turbo-${LIBJPEG_TURBO_VERSION}.tar.gz" -C "${SRC_DIR}"
 tar -xf "${DL_DIR}/libslirp-${LIBSLIRP_VERSION}.tar.bz2" -C "${SRC_DIR}"
 
 # Fail early for a QEMU version that has no patches
