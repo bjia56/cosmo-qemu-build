@@ -46,11 +46,17 @@ The same credentials can be used wherever QEMU takes `tls-creds` (chardev socket
 
 ## Display: SDL
 
-`-display sdl` opens a native window using the **host's** SDL2, which is loaded at run time (nothing is linked): install
-`libsdl2-2.0-0` (Debian/Ubuntu), `sdl2` (Homebrew), or put `SDL2.dll` where Windows finds it. Without the library QEMU says
-so and exits; `-display vnc` needs nothing. Only the 2D renderer is supported (no `gl=on`, no SDL audio), and SDL is never
-chosen by default. It has been run on Linux only (under Xvfb: `scripts/smoke_test_sdl.sh`); the Windows and macOS paths
-(including SDL's main-thread requirement on macOS) have not been run.
+`-display sdl` opens a native window using SDL2, which is loaded at run time (nothing is linked). On Windows (x64) and
+macOS the executable embeds the official SDL2 release library, so nothing needs installing: it is extracted on first use
+to your user cache directory (`%LOCALAPPDATA%\qemu-cosmo\Cache\sdl2`, `~/Library/Caches/qemu-cosmo/sdl2`) and loaded from
+there, and a changed or tampered copy is replaced. On Linux there is no official binary, so install your distribution's
+SDL2 (`libsdl2-2.0-0`). The host's own SDL2 is the fallback elsewhere, and `QEMU_SDL2_LIBRARY=<file>` forces a specific
+library. Without any, QEMU says so and exits; `-display vnc` needs nothing. Only the 2D renderer is supported (no
+`gl=on`, no SDL audio), and SDL is never chosen by default.
+
+Tested on Linux only, under Xvfb (`scripts/smoke_test_sdl.sh`), with the cache logic covered by
+`scripts/test_sdl2_cache.sh`. The embedded Windows and macOS libraries and the paths that load them have never been run
+(including SDL's main-thread requirement on macOS).
 
 ## Sharing a host directory (virtfs / 9p)
 
@@ -85,7 +91,7 @@ executable (Cosmopolitan serves the zip archive appended to it): `unzip -p qemu-
 The build runs on Linux (bash 4 or later). It requires [cosmocc](https://cosmo.zip/pub/cosmocc/) with
 `assimilate`, `apelink` and `fixupobj` (tested with 4.0.2; the macOS loader patch is written for that
 release), plus `git`, `curl`, `tar`, `sed`, `make`, `patch`, `zip`, `bzip2`, `ninja`, `pkg-config`,
-`python3`, `cmake`, `sha256sum`, `meson` (>= 1.5, for example from `pipx install meson`), `qemu-aarch64-static`
+`python3`, `cmake`, `7z`, `unzip`, `sha256sum`, `meson` (>= 1.5, for example from `pipx install meson`), `qemu-aarch64-static`
 (to run aarch64 configure-time probes) and the Linux kernel headers for each host architecture
 (`linux-libc-dev` and `linux-libc-dev-arm64-cross` on Debian/Ubuntu):
 

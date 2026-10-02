@@ -155,6 +155,15 @@ SDL2_VERSION="2.32.10"
 SDL2_URL="${UBUNTU_POOL}/libs/libsdl2/libsdl2_${SDL2_VERSION}+dfsg.orig.tar.gz"
 SDL2_SHA256="31bac5add36f98b55e3fcf4456f0dab50a06cf06bbcde283be567f64b05b95f3"
 
+# The official SDL2 release libraries for Windows (x64) and macOS (universal), embedded in the system
+# emulators for -display sdl (see stage_sdl2_libraries). Each archive and the library taken from it is
+# pinned by SHA-256.
+SDL2_RELEASE_URL="https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}"
+SDL2_WIN_ZIP_SHA256="6cf9706eefd0a4a06dc764007934d428afaf029fabdd408a9e646048c91e18fb"
+SDL2_WIN_DLL_SHA256="b37740a72a7a9706216df9f0134894bb7a850b356fd149398c67d874cbcfacb4"
+SDL2_MAC_DMG_SHA256="4a7ac31640d70214e848f994be8a12849c0f97918a7e6c2e27a40036166d1a7f"
+SDL2_MAC_DYLIB_SHA256="bc96277325b2e1dc75a13cf70f5ddcf63005d29e93f54a8b7adc7f5c3c017b91"
+
 # libslirp (user-mode networking); the tarball unpacks to libslirp-v<version>
 LIBSLIRP_VERSION="4.9.3"
 LIBSLIRP_URL="${UBUNTU_POOL}/libs/libslirp/libslirp_${LIBSLIRP_VERSION}.orig.tar.bz2"
@@ -193,10 +202,13 @@ echo ""
 # Tool checks
 # ---------------------------------------------------------------------------
 
-for tool in cosmocc apelink assimilate fixupobj git curl tar sed make patch zip bzip2 ninja python3 meson pkg-config sha256sum autoreconf xz cmake; do
+for tool in cosmocc apelink assimilate fixupobj git curl tar sed make patch zip unzip bzip2 ninja python3 meson pkg-config sha256sum autoreconf xz cmake; do
     command -v "$tool" &>/dev/null || die "$tool not found in PATH
 For cosmocc see https://cosmo.zip/pub/cosmocc/ (or a jart/cosmopolitan GitHub release)"
 done
+SEVENZIP=""
+for cand in 7z 7zz 7za; do command -v "$cand" &>/dev/null && SEVENZIP="$cand" && break; done
+[ -n "${SEVENZIP}" ] || [ -z "${SYSTEM_TARGETS}" ] || die "7z (p7zip-full) not found in PATH; it unpacks the macOS SDL2 library from its disk image"
 for arch in $ARCHES; do
     command -v "${arch}-unknown-cosmo-cc" &>/dev/null || die "${arch}-unknown-cosmo-cc not found in PATH"
 done
@@ -310,6 +322,8 @@ echo "Creating fat binaries with apelink"
 echo "================================================"
 
 prepare_loader_source
+SDL2_LIB_DIR="${BUILD_DIR}/sdl2-libs"
+[ -z "${SYSTEM_TARGETS}" ] || stage_sdl2_libraries "${SDL2_LIB_DIR}"
 
 # ---------------------------------------------------------------------------
 # Licenses go into every executable (see lib/notices.sh)
@@ -329,6 +343,8 @@ if [ -n "${SYSTEM_TARGETS}" ]; then
         # looks for /zip/share/qemu/..., which Cosmopolitan serves from the
         # zip archive appended to the binary
         (cd "${FIRMWARE_DIR}/${guest}" && zip -qr "${binary}" share)
+        # the SDL2 libraries for Windows and macOS: share/qemu/sdl2/*
+        (cd "${SDL2_LIB_DIR}" && zip -qr "${binary}" share)
         embed_licenses "${binary}"
         ls -lh "${binary}"
     done

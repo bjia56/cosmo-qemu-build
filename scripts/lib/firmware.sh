@@ -59,3 +59,32 @@ with open(out, "w") as f:
     done < "${list}"
     echo "  staged $(wc -l < "${list}") firmware files for ${guest} ($(du -sh "${dest}" | cut -f1))"
 }
+
+# stage_sdl2_libraries <destination>
+#
+# The system emulators embed the official SDL2 release libraries for Windows
+# (x64 SDL2.dll) and macOS (the universal library inside SDL2.framework), under
+# share/qemu/sdl2 in <destination>. At run time -display sdl extracts the one for
+# the host OS into the user's cache directory and loads it (QEMU patch 18), so
+# SDL2 does not have to be installed. Linux gets none: there are no official
+# binaries and distributions ship SDL2. The archives are pinned by SHA-256, and
+# so are the libraries taken out of them, so a changed archive layout fails here.
+stage_sdl2_libraries() {
+    local dest=$1 out="$1/share/qemu/sdl2" tmp
+    echo "Staging the SDL2 ${SDL2_VERSION} libraries for Windows and macOS..."
+    download "${SDL2_WIN_ZIP_SHA256}" "SDL2-${SDL2_VERSION}-win32-x64.zip" \
+        "${SDL2_RELEASE_URL}/SDL2-${SDL2_VERSION}-win32-x64.zip"
+    download "${SDL2_MAC_DMG_SHA256}" "SDL2-${SDL2_VERSION}.dmg" \
+        "${SDL2_RELEASE_URL}/SDL2-${SDL2_VERSION}.dmg"
+    rm -rf "${dest}" && mkdir -p "${out}"
+    unzip -p "${DL_DIR}/SDL2-${SDL2_VERSION}-win32-x64.zip" SDL2.dll > "${out}/SDL2-windows-x64.dll" \
+        || die "SDL2.dll is not in the SDL2 Windows archive"
+    # the disk image is HFS+; 7z reads it without mounting
+    "${SEVENZIP}" e -so "${DL_DIR}/SDL2-${SDL2_VERSION}.dmg" SDL2/SDL2.framework/Versions/A/SDL2 \
+        > "${out}/SDL2-macos-universal.dylib" 2>/dev/null \
+        || die "the SDL2 library is not in the SDL2 macOS disk image"
+    echo "${SDL2_WIN_DLL_SHA256}  ${out}/SDL2-windows-x64.dll" | sha256sum -c --status \
+        || die "SDL2.dll from the Windows archive does not match its pinned SHA-256"
+    echo "${SDL2_MAC_DYLIB_SHA256}  ${out}/SDL2-macos-universal.dylib" | sha256sum -c --status \
+        || die "the SDL2 library from the macOS disk image does not match its pinned SHA-256"
+}
