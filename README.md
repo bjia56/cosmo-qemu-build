@@ -50,8 +50,7 @@ The same credentials can be used wherever QEMU takes `tls-creds` (chardev socket
 macOS the executable embeds the official SDL2 release library, so nothing needs installing: it is extracted on first use
 to your user cache directory (`%LOCALAPPDATA%\qemu-cosmo\Cache\sdl2`, `~/Library/Caches/qemu-cosmo/sdl2`) and loaded from
 there, and a changed or tampered copy is replaced. On Linux there is no official binary, so install your distribution's
-SDL2 (`libsdl2-2.0-0`). The host's own SDL2 is the fallback elsewhere, and `QEMU_SDL2_LIBRARY=<file>` forces a specific
-library. Without any, QEMU says so and exits; `-display vnc` needs nothing. Only the 2D renderer is supported (no
+SDL2 (`libsdl2-2.0-0`). The host's own SDL2 is the fallback elsewhere. Without any, QEMU says so and exits; `-display vnc` needs nothing. Only the 2D renderer is supported (no
 `gl=on`, no SDL audio), and SDL is never chosen by default.
 
 Tested on Linux only, under Xvfb (`scripts/smoke_test_sdl.sh`), with the cache logic covered by

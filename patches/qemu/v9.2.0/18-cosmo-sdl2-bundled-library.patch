@@ -1,5 +1,5 @@
 diff --git a/ui/sdl2-cosmo.c b/ui/sdl2-cosmo.c
-index 0e31066..83c0474 100644
+index 0e31066..a415ae5 100644
 --- a/ui/sdl2-cosmo.c
 +++ b/ui/sdl2-cosmo.c
 @@ -5,7 +5,9 @@
@@ -50,11 +50,11 @@ index 0e31066..83c0474 100644
 +}
 +
 +/*
-+ * The per-user cache directory, following platformdirs' user_cache_dir():
-+ *   Windows  %LOCALAPPDATA%\<app>\Cache
-+ *   macOS    ~/Library/Caches/<app>
-+ *   other    $XDG_CACHE_HOME/<app>, or ~/.cache/<app>
-+ * with the app name "qemu-cosmo".  NULL if the user's home cannot be found.
++ * The per-user cache directory, where each OS expects a program's cache:
++ *   Windows  %LOCALAPPDATA%\qemu-cosmo\Cache
++ *   macOS    ~/Library/Caches/qemu-cosmo
++ *   other    $XDG_CACHE_HOME/qemu-cosmo, or ~/.cache/qemu-cosmo
++ * NULL if the user's home cannot be found.
 + */
 +static char *sdl2_user_cache_dir(void)
 +{
@@ -267,15 +267,14 @@ index 0e31066..83c0474 100644
          if (lib) {
              return lib;
          }
-@@ -119,21 +339,43 @@ static void *sdl2_open(const char **tried)
+@@ -119,21 +339,37 @@ static void *sdl2_open(const char **tried)
      return NULL;
  }
  
 +/*
-+ * Order: QEMU_SDL2_LIBRARY, if set, and nothing else; then the embedded
-+ * library (Windows and macOS), and the host's own SDL2 as a fallback.  The
-+ * embedded one comes first on Windows because "SDL2.dll" by name is searched
-+ * for in the current directory and PATH, where anyone could have put a file.
++ * The embedded library (Windows and macOS) comes first, then the host's own
++ * SDL2.  On Windows "SDL2.dll" by name is searched for in the current directory
++ * and PATH, where anyone could have put a file, so it must not win.
 + */
  bool sdl2_cosmo_load(Error **errp)
  {
@@ -283,7 +282,6 @@ index 0e31066..83c0474 100644
 -    const char *tried = "";
 -    void *lib, *sym;
 +    GString *tried = g_string_new(NULL);
-+    const char *forced = getenv("QEMU_SDL2_LIBRARY");
 +    void *lib = NULL, *sym;
 +    char *bundled;
  
@@ -292,17 +290,13 @@ index 0e31066..83c0474 100644
          return true;
      }
 -    lib = sdl2_open(&tried);
-+    if (forced && *forced) {
-+        lib = sdl2_try(forced, tried);
-+    } else {
-+        bundled = sdl2_bundled_library(tried);
-+        if (bundled) {
-+            lib = sdl2_try(bundled, tried);
-+            g_free(bundled);
-+        }
-+        if (!lib) {
-+            lib = sdl2_open_host(tried);
-+        }
++    bundled = sdl2_bundled_library(tried);
++    if (bundled) {
++        lib = sdl2_try(bundled, tried);
++        g_free(bundled);
++    }
++    if (!lib) {
++        lib = sdl2_open_host(tried);
 +    }
      if (!lib) {
 -        error_setg(errp, "cannot load the SDL2 library (%s): %s; install SDL2 "
