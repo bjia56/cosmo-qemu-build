@@ -96,6 +96,10 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      - name: Install SDL2 and Xvfb
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-2.0-0 xvfb xdotool
+
       - name: Download the executables
         run: |
           mkdir dist
@@ -123,6 +127,11 @@ jobs:
         if: ${{ !cancelled() }}
         timeout-minutes: 15
         run: ./scripts/smoke_test_all.sh dist system-sandbox
+
+      - name: Test -display sdl
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: ./scripts/smoke_test_all.sh dist sdl
 
   release:
     name: Publish release

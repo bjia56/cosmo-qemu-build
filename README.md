@@ -47,11 +47,10 @@ chardev socket case of `tls-creds` is exercised by CI.
 macOS the executable embeds the official SDL2 release library and extracts it on first use to the user cache
 directory (`%LOCALAPPDATA%\qemu-cosmo\Cache\sdl2`, `~/Library/Caches/qemu-cosmo/sdl2`). On Linux install
 your distribution's SDL2 (`libsdl2-2.0-0`), which is also the fallback elsewhere. Only the 2D renderer is
-supported (no `gl=on`, no SDL audio), and SDL is never the default.
+supported (no `gl=on`, no SDL audio), and SDL is never the default. On Windows the software renderer is used (the GPU drivers' own
+exceptions are fatal under Cosmopolitan); set `SDL_RENDER_DRIVER` to override it.
 
-Tested on Linux only, with the host's SDL2 under Xvfb (`scripts/smoke_test_sdl.sh`). The embedded Windows and
-macOS libraries, their extraction to the cache and the paths that load them (including SDL's main-thread
-requirement on macOS) have never been run.
+CI runs `scripts/smoke_test_sdl.sh` on every runner (Linux under Xvfb): the guest runs, nothing crashes and, except on macOS, a window titled QEMU opens.
 
 ## Sharing a host directory (virtfs / 9p)
 

@@ -48,6 +48,7 @@ emulators.
 | `18-cosmo-sdl2-bundled-library` | On Windows and macOS the executable embeds the official SDL2 (`share/qemu/sdl2/`) and tries it first (on Windows, `SDL2.dll` by name searches the current directory and `PATH`). It is extracted to the user cache directory, named by SHA-256 and reused only if the contents match; written under a temporary name and renamed, 0600 in a 0700 directory, and a symlinked or foreign directory is refused. |
 | `19-cosmo-enable-seccomp` | `-sandbox on` for Linux hosts. The filter targets the Linux kernel, so `CLONE_*` and `CSIGNAL` come from `linux/sched.h` (Cosmopolitan has no public header for them) and `seccomp(2)` is a raw system call (`compat/seccomp`). Off Linux, `-sandbox on` fails to load the filter. |
 | `20-cosmo-sandbox-spawn-deny` | `-sandbox on,spawn=deny` on Windows and macOS, where there is no seccomp (`system/cosmo-sandbox.c`): a Seatbelt profile, or the child-process mitigation policy. Every other switch is refused (see the README). |
+| `21-cosmo-sdl2-software-renderer` | On Windows `-display sdl` selects SDL's software renderer: QEMU picks no render driver, so SDL used Direct3D, and the GPU driver's own caught C++ exceptions are fatal under Cosmopolitan (the window flashes and the process dies; OpenGL fails the same way). `SDL_RENDER_DRIVER` in the environment overrides it. |
 
 ### Building system emulators
 

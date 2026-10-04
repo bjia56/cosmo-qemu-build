@@ -1,0 +1,18 @@
+--- a/ui/sdl2-cosmo.c
++++ b/ui/sdl2-cosmo.c
+@@ -357,6 +357,15 @@
+     }
+     SDL2_COSMO_FUNCS(BIND, BIND)
+ #undef BIND
++    /*
++     * QEMU never picks a render driver, so SDL would use Direct3D on Windows.
++     * The GPU driver then raises exceptions that Cosmopolitan treats as fatal
++     * (the window opens and the process dies), and OpenGL fails the same way.
++     * SDL_RENDER_DRIVER in the environment still takes precedence.
++     */
++    if (IsWindows()) {
++        SDL_SetHint("SDL_RENDER_DRIVER", "software");
++    }
+     loaded = true;
+     return true;
+ }

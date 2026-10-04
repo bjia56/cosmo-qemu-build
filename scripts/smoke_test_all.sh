@@ -3,7 +3,7 @@
 # Runs every smoke test against built executables on the machine you are on (Linux, macOS or
 # Windows under Git Bash), including the second pass of the system emulator tests with -sandbox.
 # Usage: ./scripts/smoke_test_all.sh [directory with qemu-img.com and qemu-system-*.com (default: ./out)] [stage...]
-# Stages: img, system, sandbox, system-sandbox (default: all of them). CI runs each as its own step.
+# Stages: img, system, sandbox, system-sandbox, sdl (default: all of them). CI runs each as its own step.
 
 set -eu
 
@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "${SCRIPT_DIR}/lib/smoke_common.sh"
 DIR="$(cd "${1:-${SCRIPT_DIR}/../out}" && pwd)"
 [ $# -gt 0 ] && shift
-stages="${*:-img system sandbox system-sandbox}"
+stages="${*:-img system sandbox system-sandbox sdl}"
 
 # Windows runs executables that end in .exe; elsewhere the APE files are started through sh
 if [ "$host" = windows ]; then
@@ -65,6 +65,11 @@ for stage in $stages; do
             step "qemu-system-${guest} with -sandbox ${sandbox}" \
                 "${SCRIPT_DIR}/smoke_test_system.sh" "$(cmd "qemu-system-${guest}") -sandbox ${sandbox}" "$guest"
         done
+        ;;
+    sdl)
+        if [ -f "$DIR/qemu-system-x86_64.com" ]; then
+            step "-display sdl" "${SCRIPT_DIR}/smoke_test_sdl.sh" "$(cmd qemu-system-x86_64)"
+        fi
         ;;
     *)
         echo "unknown stage: $stage" >&2
