@@ -26,7 +26,7 @@ stage_kernel_headers() {
     echo "  staging ${arch} kernel headers from ${root}..."
     mkdir -p "${S}/include/linux" "${S}/include/asm" "${S}/include/asm-generic"
     local f
-    for f in ioctl types const stddef posix_types; do
+    for f in ioctl types const stddef posix_types audit elf-em filter bpf_common sched seccomp; do
         cp "${root}/linux/${f}.h" "${S}/include/linux/"
     done
     # QEMU's asm/kvm.h includes others (asm/ptrace.h on arm64)
@@ -88,6 +88,13 @@ with open(sys.argv[2], "w") as f:
         f.write("    %s = 0x%x,\n" % (name, regs[name]))
     f.write("};\n")
 PYEOF
+}
+
+# Copy the raw-syscall helper (compat/seccomp) into QEMU and libseccomp; their seccomp patches use it.
+stage_seccomp_shim() {
+    local c="${PROJECT_ROOT}/compat/seccomp/cosmo-raw-syscall.h"
+    cp "${c}" "${SRC_DIR}/qemu/include/qemu/"
+    cp "${c}" "${SRC_DIR}/libseccomp-${LIBSECCOMP_VERSION}/src/"
 }
 
 # Copy the sscanf replacement (compat/scanf) into QEMU and libslirp; their 10-/02-cosmo-sscanf-scansets patches use it.

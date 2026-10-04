@@ -14,13 +14,13 @@ if [ -z "$QEMU" ] || [ -z "$GUEST" ]; then
     exit 2
 fi
 
+. "$(dirname "$0")/lib/smoke_common.sh"
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 cd "$TMP"
 
 TIMEOUT="${SMOKE_TIMEOUT:-60}"
-pass() { echo "ok   - $1"; }
-fail() { echo "FAIL - $1" >&2; [ -f out.txt ] && tail -n 20 out.txt >&2; exit 1; }
 
 # run_guest <expected text> <qemu args...>: run until the text appears on the serial console or the timeout expires
 run_guest() {
@@ -31,21 +31,18 @@ run_guest() {
     n=0
     while [ $n -lt "$TIMEOUT" ]; do
         if grep -a -q -E "$expect" out.txt 2>/dev/null; then
-            kill $pid 2>/dev/null || true
-            wait $pid 2>/dev/null || true
+            stop_pid $pid
             return 0
         fi
         kill -0 $pid 2>/dev/null || break
         sleep 1
         n=$((n + 1))
     done
-    kill $pid 2>/dev/null || true
-    wait $pid 2>/dev/null || true
+    stop_pid $pid
     return 1
 }
 
-# Override for slices run under qemu-user (SMOKE_HOST_ARCH=aarch64)
-host_arch=${SMOKE_HOST_ARCH:-$(uname -m)}
+host_arch=$(uname -m)
 case "$host_arch" in arm64) host_arch=aarch64 ;; amd64) host_arch=x86_64 ;; esac
 
 $QEMU --version | head -n 1
@@ -89,15 +86,27 @@ x86_64)
         || fail "boot sector with kvm:tcg fallback"
     pass "boot sector with accel=kvm:tcg (KVM or fallback)"
 
-    # must fail cleanly off Windows
-    if [ "$host_arch" = "x86_64" ]; then
-        if $QEMU -machine pc -accel whpx -display none -monitor none -parallel none -S > out.txt 2>&1; then
-            fail "-accel whpx must fail on a non-Windows host"
+    # WHPX must fail cleanly off Windows. On Windows it is real: it works where the Windows
+    # Hypervisor Platform is enabled and fails otherwise, so it is only tried there
+    case "$host" in
+    windows)
+        if run_guest "COSMO-X86-BOOT-OK" -machine pc -accel whpx -drive format=raw,file=boot.img,if=floppy; then
+            pass "boot sector on pc (WHPX)"
+        else
+            echo "skip - WHPX boot test (Windows Hypervisor Platform not usable here)"
         fi
-        grep -a -q 'only available when running on Windows' out.txt \
-            || fail "-accel whpx reports a clear error on a non-Windows host"
-        pass "-accel whpx fails cleanly on a non-Windows host"
-    fi
+        ;;
+    *)
+        if [ "$host_arch" = "x86_64" ]; then
+            if $QEMU -machine pc -accel whpx -display none -monitor none -parallel none -S > out.txt 2>&1; then
+                fail "-accel whpx must fail on a non-Windows host"
+            fi
+            grep -a -q 'only available when running on Windows' out.txt \
+                || fail "-accel whpx reports a clear error on a non-Windows host"
+            pass "-accel whpx fails cleanly on a non-Windows host"
+        fi
+        ;;
+    esac
 
     if [ "$host_arch" = "x86_64" ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
         run_guest "COSMO-X86-BOOT-OK" -machine pc -accel kvm -drive format=raw,file=boot.img,if=floppy \
@@ -154,8 +163,7 @@ monitor_cmds() {
         n=$((n + 1))
     done
     if kill -0 $pid 2>/dev/null; then
-        kill $pid 2>/dev/null || true
-        wait $pid 2>/dev/null || true
+        stop_pid $pid
         return 1
     fi
     wait $pid 2>/dev/null || true

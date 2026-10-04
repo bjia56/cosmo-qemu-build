@@ -11,6 +11,12 @@ emulators.
 | --- | --- |
 | `01-cosmo-portability` | `O_NONBLOCK`, `POLL*` and `AF_*`/`MSG_*` are run-time values: drop the compile-time `O_NONBLOCK` assertion, fall back to Linux constants for `glibconfig.h`, and translate `G_IO_*` to and from `POLL*` around `poll()` (they differ on Windows). |
 
+## `libseccomp/2.6.0`
+
+| Patch | Purpose |
+| --- | --- |
+| `01-cosmo-raw-syscall` | Cosmopolitan's `syscall()` is a stub, so libseccomp would fall back to `prctl()` (no `TSYNC`, no `SCMP_ACT_KILL_PROCESS`). `syscall()` becomes a raw Linux system call (`compat/seccomp`), `ENOSYS` off Linux. |
+
 ## `libslirp/4.9.3`
 
 | Patch | Purpose |
@@ -40,6 +46,8 @@ emulators.
 | `16-cosmo-thread-stack-size` | Cosmopolitan's default thread stack is 64 KiB; the VNC worker keeps a 100 KiB `VncState` on its stack and crashed. `qemu_thread_create()` asks for 2 MiB. |
 | `17-cosmo-sdl2-dlopen` | `-display sdl` with SDL2 loaded at run time: `ui/sdl2-cosmo.c` wraps the ~50 SDL functions the 2D renderer calls through `cosmo_dlsym()`/`cosmo_dltramp()`. No audio or OpenGL (SDL audio takes callbacks), and never the default display, so headless hosts keep working. |
 | `18-cosmo-sdl2-bundled-library` | On Windows and macOS the executable embeds the official SDL2 (`share/qemu/sdl2/`) and tries it first (on Windows, `SDL2.dll` by name searches the current directory and `PATH`). It is extracted to the user cache directory, named by SHA-256 and reused only if the contents match; written under a temporary name and renamed, 0600 in a 0700 directory, and a symlinked or foreign directory is refused. |
+| `19-cosmo-enable-seccomp` | `-sandbox on` for Linux hosts. The filter targets the Linux kernel, so `CLONE_*` and `CSIGNAL` come from `linux/sched.h` (Cosmopolitan has no public header for them) and `seccomp(2)` is a raw system call (`compat/seccomp`). Off Linux, `-sandbox on` fails to load the filter. |
+| `20-cosmo-sandbox-spawn-deny` | `-sandbox on,spawn=deny` on Windows and macOS, where there is no seccomp (`system/cosmo-sandbox.c`): a Seatbelt profile, or the child-process mitigation policy. Every other switch is refused (see the README). |
 
 ### Building system emulators
 

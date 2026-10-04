@@ -1,0 +1,18 @@
+--- a/src/system.c
++++ b/src/system.c
+@@ -28,6 +28,15 @@
+ 
+ #include "system.h"
+ 
++#ifdef __COSMOPOLITAN__
++/* Cosmopolitan's syscall() is a stub (see cosmo-raw-syscall.h, copied in by the build) */
++#include <sys/syscall.h>
++#include "cosmo-raw-syscall.h"
++
++#define syscall(nr, a1, a2, a3) \
++	cosmo_raw_syscall((long)(nr), (long)(a1), (long)(a2), (long)(a3), 0, 0, 0)
++#endif /* __COSMOPOLITAN__ */
++
+ #include <seccomp.h>
+ 
+ #include "arch.h"

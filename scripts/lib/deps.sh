@@ -65,9 +65,10 @@ build_deps() {
     mkdir -p "${B}/bzip2" "${S}/include" "${S}/lib" && cp -r "${SRC_DIR}/bzip2-${BZIP2_VERSION}/." "${B}/bzip2"
     run_logged "${arch}-bzip2" bash -c "cd '${B}/bzip2' && make -j${JOBS} CC='${cc}' AR='${ar}' RANLIB='${ranlib}' libbz2.a && cp bzlib.h '${S}/include/' && cp libbz2.a '${S}/lib/'"
 
-    # zstd's BMI2 assembly is left out: cosmocc rejects the (empty) object file
+    # zstd's BMI2 assembly is left out: cosmocc rejects the (empty) object file.
+    # DYNAMIC_BMI2=0 drops its run-time BMI2 variants too: they use target() (see check_no_tls_canary).
     mkdir -p "${B}/zstd" && cp -r "${SRC_DIR}/zstd-${ZSTD_VERSION}/." "${B}/zstd"
-    run_logged "${arch}-zstd" bash -c "cd '${B}/zstd/lib' && make -j${JOBS} ZSTD_NO_ASM=1 CC='${cc}' AR='${ar}' PREFIX='${S}' libzstd.a libzstd.pc && make ZSTD_NO_ASM=1 CC='${cc}' AR='${ar}' PREFIX='${S}' install-static install-pc install-includes"
+    run_logged "${arch}-zstd" bash -c "cd '${B}/zstd/lib' && make -j${JOBS} ZSTD_NO_ASM=1 MOREFLAGS=-DDYNAMIC_BMI2=0 CC='${cc}' AR='${ar}' PREFIX='${S}' libzstd.a libzstd.pc && make ZSTD_NO_ASM=1 MOREFLAGS=-DDYNAMIC_BMI2=0 CC='${cc}' AR='${ar}' PREFIX='${S}' install-static install-pc install-includes"
 
     # libffi: static trampolines need a raw mmap of the exec file, unsupported here.
     # The orig tarball has no configure script: generate it in a per-arch copy.
@@ -143,6 +144,14 @@ EOF
             --prefix="${S}" --default-library=static --wrap-mode=nodownload
         run_logged "${arch}-libslirp-build" ninja -C "${B}/libslirp" -j"${JOBS}" install
         stage_kernel_headers "${arch}" "${S}"
+        # libseccomp (-sandbox on): needs the kernel headers just staged. Cosmopolitan hides
+        # prctl() and syscall() behind _GNU_SOURCE, and its syscall() is a stub (see the patch).
+        mkdir -p "${B}/libseccomp" && cd "${B}/libseccomp"
+        run_logged "${arch}-libseccomp-configure" env CC="${cc}" AR="${ar}" RANLIB="${ranlib}" \
+            CPPFLAGS="-I${S}/include -D_GNU_SOURCE" \
+            "${SRC_DIR}/libseccomp-${LIBSECCOMP_VERSION}/configure" --prefix="${S}" --host=${host_triplet} \
+            --enable-static --disable-shared --disable-python
+        run_logged "${arch}-libseccomp" bash -c "make -j${JOBS} -C src install && make -C include install && make install-pkgconfDATA"
         stage_sdl2_headers "${S}"
         # WHPX only exists for x86_64 guests on x86_64 (Windows) hosts
         if [ "${arch}" = "x86_64" ] && [[ " ${SYSTEM_TARGETS} " == *" x86_64 "* ]]; then

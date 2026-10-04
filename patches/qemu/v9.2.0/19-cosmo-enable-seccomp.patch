@@ -1,0 +1,32 @@
+diff --git a/system/qemu-seccomp.c b/system/qemu-seccomp.c
+index 71ac444..805cebd 100644
+--- a/system/qemu-seccomp.c
++++ b/system/qemu-seccomp.c
+@@ -22,6 +22,15 @@
+ #include <seccomp.h>
+ #include "sysemu/seccomp.h"
+ #include <linux/seccomp.h>
++#ifdef __COSMOPOLITAN__
++/*
++ * The filter is for the Linux kernel, so CLONE_* and CSIGNAL must be its ABI values:
++ * Cosmopolitan has no public header for them. Its syscall() is a stub, so seccomp(2)
++ * is issued directly.
++ */
++#include <linux/sched.h>
++#include "qemu/cosmo-raw-syscall.h"
++#endif
+ 
+ /* For some architectures (notably ARM) cacheflush is not supported until
+  * libseccomp 2.2.3, but configure enforces that we are using a more recent
+@@ -269,7 +278,11 @@ static inline __attribute__((unused)) int
+ qemu_seccomp(unsigned int operation, unsigned int flags, void *args)
+ {
+ #ifdef __NR_seccomp
++#ifdef __COSMOPOLITAN__
++    return cosmo_raw_syscall(__NR_seccomp, operation, flags, (long)args, 0, 0, 0);
++#else
+     return syscall(__NR_seccomp, operation, flags, args);
++#endif
+ #else
+     errno = ENOSYS;
+     return -1;

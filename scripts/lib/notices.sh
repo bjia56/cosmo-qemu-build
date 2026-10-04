@@ -24,6 +24,7 @@ write_notices() {
             "libffi ${LIBFFI_VERSION}|${SRC_DIR}/libffi-${LIBFFI_VERSION}/LICENSE" \
             "zlib ${ZLIB_VERSION}|${SRC_DIR}/zlib-${ZLIB_VERSION}/LICENSE" \
             "pixman ${PIXMAN_VERSION}|${SRC_DIR}/pixman-${PIXMAN_VERSION}/COPYING" \
+            "libseccomp ${LIBSECCOMP_VERSION}|${SRC_DIR}/libseccomp-${LIBSECCOMP_VERSION}/LICENSE" \
             "libslirp ${LIBSLIRP_VERSION}|${SRC_DIR}/libslirp-v${LIBSLIRP_VERSION}/COPYRIGHT"; do
             name="${entry%%|*}"; file="${entry#*|}"
             echo ""

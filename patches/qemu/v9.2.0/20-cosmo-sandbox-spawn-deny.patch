@@ -1,0 +1,247 @@
+diff --git a/include/sysemu/cosmo-sandbox.h b/include/sysemu/cosmo-sandbox.h
+new file mode 100644
+index 0000000..a36445e
+--- /dev/null
++++ b/include/sysemu/cosmo-sandbox.h
+@@ -0,0 +1,12 @@
++/*
++ * -sandbox on Windows and macOS hosts (Cosmopolitan builds)
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++#ifndef QEMU_COSMO_SANDBOX_H
++#define QEMU_COSMO_SANDBOX_H
++
++/* Apply the -sandbox options on a host without seccomp; fails closed */
++int cosmo_sandbox_parse(QemuOpts *opts, Error **errp);
++
++#endif
+diff --git a/system/cosmo-sandbox.c b/system/cosmo-sandbox.c
+new file mode 100644
+index 0000000..f910088
+--- /dev/null
++++ b/system/cosmo-sandbox.c
+@@ -0,0 +1,171 @@
++/*
++ * -sandbox for Windows and macOS hosts (Cosmopolitan builds)
++ *
++ * Linux uses seccomp (qemu-seccomp.c). The other hosts have no equivalent of a
++ * system call filter, so only what maps cleanly is offered, and anything else
++ * is refused rather than ignored:
++ *
++ *   spawn=deny   no new processes. macOS: a Seatbelt profile denying
++ *                process-fork and process-exec. Windows: the child-process
++ *                mitigation policy.
++ *   obsolete, elevateprivileges=allow, resourcecontrol=allow  accepted, no effect.
++ *   elevateprivileges=deny|children, resourcecontrol=deny     not supported.
++ *
++ * The OS interfaces are loaded at run time with cosmo_dlopen(), like the WHPX
++ * and HVF accelerators, since nothing here may be linked on other hosts.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#include "qemu/osdep.h"
++#include "qapi/error.h"
++#include "qemu/option.h"
++#include "sysemu/cosmo-sandbox.h"
++
++#include <cosmo.h>
++#include <dlfcn.h>
++
++#define MACOS_LIBSYSTEM "/usr/lib/libSystem.B.dylib"
++
++/* Everything but process creation stays allowed: QEMU needs files, sockets and mmap */
++static const char macos_spawn_deny_profile[] =
++    "(version 1)\n"
++    "(allow default)\n"
++    "(deny process-fork)\n"
++    "(deny process-exec*)\n";
++
++static const char *host_name(void)
++{
++    return IsWindows() ? "Windows" : "macOS";
++}
++
++/* A callable pointer to a symbol, or NULL (cosmo_dltramp() would wrap NULL) */
++static void *sym_tramp(void *lib, const char *name)
++{
++    void *fn = cosmo_dlsym(lib, name);
++
++    return fn ? cosmo_dltramp(fn) : NULL;
++}
++
++/* sandbox_init() is deprecated but is what browsers use; flags 0 means "profile is SBPL source" */
++static bool macos_deny_spawn(Error **errp)
++{
++    typedef int (*sandbox_init_fn)(const char *, uint64_t, char **);
++    typedef void (*sandbox_free_error_fn)(char *);
++    void *lib;
++    sandbox_init_fn sandbox_init_p;
++    sandbox_free_error_fn sandbox_free_error_p;
++    char *err = NULL;
++    int rc;
++
++    lib = cosmo_dlopen(MACOS_LIBSYSTEM, RTLD_NOW);
++    if (!lib) {
++        error_setg(errp, "sandbox: cannot load libSystem: %s", cosmo_dlerror());
++        return false;
++    }
++    sandbox_init_p = sym_tramp(lib, "sandbox_init");
++    if (!sandbox_init_p) {
++        error_setg(errp, "sandbox: sandbox_init() not found in libSystem");
++        return false;
++    }
++    sandbox_free_error_p = sym_tramp(lib, "sandbox_free_error");
++
++    rc = sandbox_init_p(macos_spawn_deny_profile, 0, &err);
++    if (rc != 0) {
++        error_setg(errp, "sandbox: sandbox_init failed: %s",
++                   err ? err : "unknown error");
++        if (err && sandbox_free_error_p) {
++            sandbox_free_error_p(err);
++        }
++        return false;
++    }
++    return true;
++}
++
++#define WIN_PROCESS_CHILD_PROCESS_POLICY 13
++
++static bool windows_deny_spawn(Error **errp)
++{
++    typedef int (*SetProcessMitigationPolicy_fn)(int, void *, size_t);
++    typedef uint32_t (*GetLastError_fn)(void);
++    void *k32;
++    SetProcessMitigationPolicy_fn set_policy;
++    GetLastError_fn last_error;
++    uint32_t no_child_process_creation = 1;
++
++    k32 = cosmo_dlopen("kernel32.dll", RTLD_NOW);
++    if (!k32) {
++        error_setg(errp, "sandbox: cannot load kernel32.dll: %s", cosmo_dlerror());
++        return false;
++    }
++    set_policy = sym_tramp(k32, "SetProcessMitigationPolicy");
++    last_error = sym_tramp(k32, "GetLastError");
++
++    /* The kernel refuses child processes (Windows 10 1709 or later) */
++    if (!set_policy ||
++        !set_policy(WIN_PROCESS_CHILD_PROCESS_POLICY, &no_child_process_creation,
++                    sizeof(no_child_process_creation))) {
++        error_setg(errp, "sandbox: cannot restrict process creation (error %u)",
++                   last_error ? last_error() : 0);
++        return false;
++    }
++    return true;
++}
++
++/* A switch that only "allow" can honour here: "unsupported" values are refused, others are invalid */
++static bool allow_only(QemuOpts *opts, const char *name,
++                       const char *unsupported1, const char *unsupported2,
++                       Error **errp)
++{
++    const char *value = qemu_opt_get(opts, name);
++
++    if (!value || g_str_equal(value, "allow")) {
++        return true;
++    }
++    if (g_str_equal(value, unsupported1) ||
++        (unsupported2 && g_str_equal(value, unsupported2))) {
++        error_setg(errp, "%s=%s is not supported on %s", name, value, host_name());
++    } else {
++        error_setg(errp, "invalid argument for %s", name);
++    }
++    return false;
++}
++
++int cosmo_sandbox_parse(QemuOpts *opts, Error **errp)
++{
++    bool spawn_deny = false;
++    const char *value;
++
++    value = qemu_opt_get(opts, "obsolete");
++    if (value && !g_str_equal(value, "allow") && !g_str_equal(value, "deny")) {
++        error_setg(errp, "invalid argument for obsolete");
++        return -1;
++    }
++
++    if (!allow_only(opts, "elevateprivileges", "deny", "children", errp)) {
++        return -1;
++    }
++
++    value = qemu_opt_get(opts, "spawn");
++    if (value) {
++        if (g_str_equal(value, "deny")) {
++            spawn_deny = true;
++        } else if (!g_str_equal(value, "allow")) {
++            error_setg(errp, "invalid argument for spawn");
++            return -1;
++        }
++    }
++
++    if (!allow_only(opts, "resourcecontrol", "deny", NULL, errp)) {
++        return -1;
++    }
++
++    if (!spawn_deny) {
++        error_setg(errp, "-sandbox on does nothing on %s without spawn=deny",
++                   host_name());
++        return -1;
++    }
++
++    return (IsWindows() ? windows_deny_spawn(errp)
++                        : macos_deny_spawn(errp)) ? 0 : -1;
++}
+diff --git a/system/meson.build b/system/meson.build
+index 4952f4b..89035e4 100644
+--- a/system/meson.build
++++ b/system/meson.build
+@@ -31,6 +31,9 @@ if have_tpm
+ endif
+ 
+ system_ss.add(when: seccomp, if_true: files('qemu-seccomp.c'))
++if seccomp.found() and host_os == 'cosmopolitan'
++  system_ss.add(files('cosmo-sandbox.c'))
++endif
+ system_ss.add(when: 'CONFIG_DEVICE_TREE',
+               if_true: [fdt, files('device_tree.c')],
+               if_false: files('device_tree-stub.c'))
+diff --git a/system/qemu-seccomp.c b/system/qemu-seccomp.c
+index 805cebd..a240f1f 100644
+--- a/system/qemu-seccomp.c
++++ b/system/qemu-seccomp.c
+@@ -30,6 +30,7 @@
+  */
+ #include <linux/sched.h>
+ #include "qemu/cosmo-raw-syscall.h"
++#include "sysemu/cosmo-sandbox.h"
+ #endif
+ 
+ /* For some architectures (notably ARM) cacheflush is not supported until
+@@ -375,6 +376,11 @@ static int seccomp_start(uint32_t seccomp_opts, Error **errp)
+ int parse_sandbox(void *opaque, QemuOpts *opts, Error **errp)
+ {
+     if (qemu_opt_get_bool(opts, "enable", false)) {
++#ifdef __COSMOPOLITAN__
++        if (!IsLinux()) {
++            return cosmo_sandbox_parse(opts, errp);
++        }
++#endif
+         uint32_t seccomp_opts = QEMU_SECCOMP_SET_DEFAULT
+                 | QEMU_SECCOMP_SET_OBSOLETE;
+         const char *value = NULL;
+@@ -492,6 +498,13 @@ static void seccomp_register(void)
+     }
+ #endif
+ 
++#ifdef __COSMOPOLITAN__
++    /* no seccomp here: Windows and macOS have their own backend */
++    if (IsWindows() || IsXnu()) {
++        add = true;
++    }
++#endif
++
+     if (add) {
+         qemu_add_opts(&qemu_sandbox_opts);
+     }

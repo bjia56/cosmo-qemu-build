@@ -22,8 +22,9 @@ The system emulators choose an accelerator at run time, and TCG (software emulat
 
 Use `-machine accel=kvm:tcg` (or `whpx:tcg`, `hvf:tcg`) to try an accelerator and fall back to TCG.
 
-CI builds and tests on Linux only (x86_64 natively, aarch64 under qemu-user). KVM, WHPX, HVF and the
-macOS and Windows startup paths need real hardware and are untested.
+CI builds on Linux, then runs the smoke tests on native runners: Linux x86_64 and aarch64, macOS arm64 and
+Windows x86_64, and all of them must pass for a release. A WHPX guest boots on the Windows runner. KVM and
+HVF need hardware the runners do not provide and are untested.
 
 HVF needs the `com.apple.security.hypervisor` entitlement on the loader that Cosmopolitan compiles on first
 run (needs the Xcode command line tools). The executables use their own loader, `.q.ape-01` in
@@ -71,6 +72,23 @@ requirement on macOS) have never been run.
 Device nodes and symlink containment are limited off Linux (patch `15`). Only Linux has been run: "expected"
 means the macOS and Windows code is written for it but untested.
 
+## Sandboxing
+
+`-sandbox on` is enforced differently per host:
+
+| Host | Mechanism | Supported switches |
+| --- | --- | --- |
+| Linux | seccomp (libseccomp 2.6.0) | all: `obsolete`, `elevateprivileges`, `spawn`, `resourcecontrol` |
+| macOS | Seatbelt profile (`sandbox_init`) | `spawn=deny` only |
+| Windows | child-process mitigation policy (`SetProcessMitigationPolicy`) | `spawn=deny` only |
+
+`spawn=deny` stops the monitor from starting processes (`migrate "exec:..."` fails with "Failed to fork").
+On macOS and Windows every other switch is refused and `-sandbox on` alone is an error, so the flag never
+silently does nothing; neither restricts files or the network. FreeBSD, OpenBSD and NetBSD have no sandbox.
+
+CI runs the sandbox tests and the system emulator suite under `-sandbox` on all four runners. KVM is untested
+under the sandbox.
+
 ## Getting the binaries
 
 The [Build workflow](.github/workflows/build.yml) uploads one artifact per program. Downloads lose the
@@ -81,16 +99,16 @@ executable bit: `chmod +x qemu-*.com`, or run `sh ./qemu-img.com`. License texts
 
 Linux with bash 4+. Requires [cosmocc](https://cosmo.zip/pub/cosmocc/) with
 `assimilate`, `apelink` and `fixupobj` (4.0.2; the macOS loader patch is written for that release), plus `git`, `curl`, `tar`, `sed`, `make`, `patch`, `zip`, `bzip2`, `ninja`, `pkg-config`,
-`python3`, `cmake`, `7z`, `unzip`, `sha256sum`, `meson` (>= 1.5, for example from `pipx install meson`), `qemu-aarch64-static`
+`python3`, `cmake`, `gperf`, `objdump`, `7z`, `unzip`, `sha256sum`, `meson` (>= 1.5, for example from `pipx install meson`), `qemu-aarch64-static`
 (to run aarch64 configure-time probes) and the Linux kernel headers for each host architecture
 (`linux-libc-dev` and `linux-libc-dev-arm64-cross` on Debian/Ubuntu):
 
 ```bash
 ./scripts/build.sh                       # everything, into ./out
-./scripts/smoke_test_aarch64.sh out      # the aarch64 halves, under qemu-user
+./scripts/smoke_test_all.sh out          # every smoke test, natively (Linux, macOS, Windows under Git Bash)
 ```
 
-`build.sh` runs the x86_64 smoke tests itself. It builds the dependencies per architecture into a static
+`build.sh` does not run the smoke tests. It builds the dependencies per architecture into a static
 sysroot, builds QEMU from a tagged release, and joins both architectures with `apelink`. Cosmopolitan-specific
 changes are in [`patches/`](patches); [`compat/`](compat) holds header shims and the macOS loader patch.
 Sources are checked against pinned commits and downloads against pinned SHA-256 sums.

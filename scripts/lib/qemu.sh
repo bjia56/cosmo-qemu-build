@@ -2,6 +2,18 @@
 # SPDX-License-Identifier: MIT
 # Configuring and building QEMU for one host architecture. Sourced by scripts/build.sh.
 
+# check_no_tls_canary <elf>: no function may read the default canary at %fs:0x28. The compiler shims
+# use a global canary (compat/ssp), but GCC drops that for functions with a target() attribute, and
+# the stock canary faults where %fs is not the TIB (Windows).
+check_no_tls_canary() {
+    local elf=$1 bad
+    bad="$(objdump -d --no-show-raw-insn "${elf}" \
+        | awk '/^[0-9a-f]+ <.*>:$/ { fn = $2 } /%fs:0x28/ { print fn }' | sort -u)"
+    [ -z "${bad}" ] || die "${elf##*/} reads the default stack protector canary (%fs:0x28) in:
+${bad}
+(a function with a target() attribute, such as a run-time CPU feature variant?)"
+}
+
 build_qemu() {
     local arch=$1 S=$2 B=$3
     local qb="${B}/qemu"
@@ -34,13 +46,13 @@ build_qemu() {
             hvf_flag="--enable-hvf"
             extra_cflags="${extra_cflags} -I${S}/include/hvf"
         fi
-        system_flags=(--target-list="${targets%,}" --enable-slirp --enable-virtfs --enable-vnc --enable-vnc-jpeg --enable-sdl --disable-sdl-image ${kvm_flag} ${whpx_flag} ${hvf_flag})
+        system_flags=(--target-list="${targets%,}" --enable-slirp --enable-seccomp --enable-virtfs --enable-vnc --enable-vnc-jpeg --enable-sdl --disable-sdl-image ${kvm_flag} ${whpx_flag} ${hvf_flag})
     else
-        system_flags=(--disable-system --disable-slirp --disable-virtfs --disable-vnc --disable-vnc-jpeg --disable-sdl)
+        system_flags=(--disable-system --disable-slirp --disable-seccomp --disable-virtfs --disable-vnc --disable-vnc-jpeg --disable-sdl)
     fi
 
     #  --prefix=/zip, --disable-relocatable: data files come from the embedded zip, not relative to the executable
-    #  --disable-stack-protector: cosmocc constructors run before TLS is set up
+    #  --enable-stack-protector: the compiler shims add the global canary (see compat/ssp)
     #  --with-coroutine=ucontext: the sigaltstack backend deadlocks under cosmo
     #  --disable-plugins: TCG plugins need dlopen
     #  --enable-gnutls --enable-nettle: crypto stays on nettle; gnutls only does TLS
@@ -53,14 +65,14 @@ build_qemu() {
         "${system_flags[@]}" \
         --disable-user --disable-docs --disable-guest-agent \
         --enable-tools --disable-werror \
-        --disable-stack-protector --with-coroutine=ucontext \
+        --enable-stack-protector --with-coroutine=ucontext \
         --disable-plugins --enable-png \
         --disable-linux-aio --disable-linux-io-uring \
         --disable-vhost-user --disable-vhost-kernel --disable-vhost-user-blk-server \
         --disable-vduse-blk-export --disable-libvduse \
         --disable-curl --enable-gnutls --enable-nettle --disable-gcrypt \
         --enable-zstd --enable-bzip2 --disable-fuse \
-        --disable-seccomp --disable-attr --disable-libnfs --disable-libssh \
+        --disable-attr --disable-libnfs --disable-libssh \
         --disable-rbd --disable-glusterfs --disable-capstone
 
     # keep set: ninja's regeneration after a meson.build change would otherwise pick up host libraries
@@ -73,6 +85,10 @@ build_qemu() {
     unset PKG_CONFIG_PATH PKG_CONFIG_LIBDIR
 
     [ -f qemu-img ] || die "qemu-img not found after ${arch} build"
+    if [ "${arch}" = x86_64 ]; then
+        check_no_tls_canary qemu-img
+        for guest in ${SYSTEM_TARGETS}; do check_no_tls_canary "qemu-system-${guest}"; done
+    fi
     cp qemu-img "${B}/qemu-img.elf"
     for guest in ${SYSTEM_TARGETS}; do
         [ -f "qemu-system-${guest}" ] || die "qemu-system-${guest} not found after ${arch} build"

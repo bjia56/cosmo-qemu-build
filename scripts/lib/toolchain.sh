@@ -17,6 +17,10 @@ prepare_toolchain() {
             "${TOOLS_DIR}/${arch}-cosmo-${t}" --version >/dev/null 2>&1 \
                 || die "${arch}-cosmo-${t} is not runnable after assimilate"
         done
+        # the canary itself must not be protected, so use the driver directly
+        "${COSMO_BIN}/${arch}-unknown-cosmo-cc" -O2 -fno-stack-protector \
+            -c "${PROJECT_ROOT}/compat/ssp/cosmo-ssp.c" -o "${TOOLS_DIR}/${arch}-cosmo-ssp.o" \
+            || die "could not build the ${arch} stack protector guard"
         for t in cc gcc; do
             cat > "${TOOLS_DIR}/${arch}-cosmo-${t}" <<WRAPPER
 #!/bin/bash
@@ -28,6 +32,22 @@ if [[ -n \${COSMO_MCOSMO:-} ]]; then
     for a in "\${args[@]}"; do
         case \$a in -c|-o|-E|-S) args=(-mcosmo "\${args[@]}"); break ;; esac
     done
+fi
+# Stack protector for QEMU and every dependency (see compat/ssp): a global canary, and the
+# object that defines it on every link.
+probe=
+link=
+for a in "\${args[@]}"; do
+    case \$a in
+        --version|-v|--help|-dump*|-print-*) probe=1 ;;
+        -c|-S|-E|-M|-MM) link=; break ;;
+        # QEMU's link step passes its arguments (including -o) in a response file
+        -o|@*) link=1 ;;
+    esac
+done
+if [[ -z \$probe ]]; then
+    args=(-fstack-protector-strong -mstack-protector-guard=global "\${args[@]}")
+    [[ -n \$link ]] && args+=("${TOOLS_DIR}/${arch}-cosmo-ssp.o")
 fi
 exec "${COSMO_BIN}/${arch}-unknown-cosmo-cc" "\${args[@]}"
 WRAPPER
