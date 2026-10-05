@@ -24,6 +24,7 @@ emulators.
 | `01-cosmo-portability` | No `if_nametoindex()`: ignore the interface scope in `nameserver fe80::1%eth0`. |
 | `02-cosmo-sscanf-scansets` | `cosmo_sscanf()` (as QEMU patch `10`) for `resolv.conf`, FTP and IRC parsing. |
 | `03-cosmo-windows-dns` | Windows has no `/etc/resolv.conf` (Cosmopolitan maps it to `\etc\resolv.conf` on the current drive), so the guest's DNS server `10.0.2.3` dropped every query. On Windows, `get_dns_addr()` and `get_dns6_addr()` ask `GetAdaptersAddresses()` (Cosmopolitan's `libc/nt`), as libslirp's own `_WIN32` code does: adapters that are up and not loopback, those with a gateway first, then the lowest metric; deprecated site-local `fec0:0:0:ffff::1-3` resolvers are skipped. Chosen at run time with `IsWindows()`, x86_64 slice only. |
+| `04-cosmo-windows-reuseaddr` | Cosmopolitan is not `_WIN32`, so libslirp set `SO_REUSEADDR` on every socket. On Windows that lets a second socket bind a port already in use (a `hostfwd` rule on a busy port succeeded silently, and another process could share it); Windows already reuses `TIME_WAIT` endpoints by default. Skipped when `IsWindows()`. |
 
 ## `qemu/v9.2.0`
 

@@ -1,0 +1,28 @@
+diff --git a/src/util.h b/src/util.h
+index dafb64a..3b3a461 100644
+--- a/src/util.h
++++ b/src/util.h
+@@ -24,6 +24,9 @@
+ #ifndef UTIL_H_
+ #define UTIL_H_
+ 
++#ifdef __COSMOPOLITAN__
++#include <cosmo.h>
++#endif
+ #include <glib.h>
+ 
+ #include <stdlib.h>
+@@ -233,6 +236,13 @@ static inline int slirp_socket_set_fast_reuse(slirp_os_socket fd)
+ {
+ #ifndef _WIN32
+     int v = 1;
++#ifdef __COSMOPOLITAN__
++    /* Windows reuses TIME_WAIT endpoints by default; SO_REUSEADDR there lets
++     * a second socket bind a port that is in use (see the _WIN32 branch) */
++    if (IsWindows()) {
++        return 0;
++    }
++#endif
+     return setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &v, sizeof(v));
+ #else
+ #ifdef GLIB_UNUSED_PARAM
