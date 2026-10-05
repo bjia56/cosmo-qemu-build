@@ -1,0 +1,188 @@
+diff --git a/src/slirp.c b/src/slirp.c
+index 04d187e..83ae6df 100644
+--- a/src/slirp.c
++++ b/src/slirp.c
+@@ -33,6 +33,13 @@
+ #include <net/if.h>
+ #endif
+ 
++#if defined(__COSMOPOLITAN__) && defined(__x86_64__)
++#include <cosmo.h>
++#include <libc/nt/iphlpapi.h>
++#include <libc/nt/struct/ipadapteraddresses.h>
++#define SLIRP_COSMO_NT_DNS 1
++#endif
++
+ /* https://gitlab.freedesktop.org/slirp/libslirp/issues/18 */
+ #if defined(__NetBSD__) && defined(if_mtu)
+ #undef if_mtu
+@@ -518,10 +525,155 @@ static int get_dns_addr_resolv_conf(int af, void *pdns_addr, void *cached_addr,
+     return found ? 0 : -1;
+ }
+ 
++#ifdef SLIRP_COSMO_NT_DNS
++/*
++ * Windows has no /etc/resolv.conf (Cosmopolitan maps it to \etc\resolv.conf
++ * on the current drive), so ask the IP Helper API, as libslirp's own _WIN32
++ * code does.  The adapter must be up and not the loopback; adapters with a
++ * default gateway win, then the lowest metric.  Cosmopolitan's constants are
++ * run-time values, so the address families returned by Windows compare
++ * correctly against AF_INET and AF_INET6.
++ */
++static bool nt_dns_is_site_local_broadcast(const struct in6_addr *a)
++{
++    /* fec0:0:0:ffff::1-3: deprecated, never valid resolvers */
++    static const uint8_t prefix[15] = { 0xfe, 0xc0, 0, 0, 0, 0, 0xff, 0xff,
++                                        0, 0, 0, 0, 0, 0, 0 };
++    return memcmp(a, prefix, sizeof(prefix)) == 0 &&
++           a->s6_addr[15] >= 1 && a->s6_addr[15] <= 3;
++}
++
++static bool nt_dns_server_of(int af, const struct NtIpAdapterAddresses *ad,
++                             void *addr, uint32_t *scope_id)
++{
++    const struct NtIpAdapterDnsServerAddress *d;
++
++    for (d = ad->FirstDnsServerAddress; d; d = d->Next) {
++        const struct sockaddr *sa = d->Address.lpSockaddr;
++
++        if (!sa || sa->sa_family != af) {
++            continue;
++        }
++        if (af == AF_INET) {
++            const struct sockaddr_in *sin = (const struct sockaddr_in *)sa;
++            if (sin->sin_addr.s_addr == 0 ||
++                d->Address.iSockaddrLength < (int)sizeof(*sin)) {
++                continue;
++            }
++            memcpy(addr, &sin->sin_addr, sizeof(sin->sin_addr));
++        } else {
++            const struct sockaddr_in6 *sin6 = (const struct sockaddr_in6 *)sa;
++            if (d->Address.iSockaddrLength < (int)sizeof(*sin6) ||
++                in6_zero(&sin6->sin6_addr) ||
++                nt_dns_is_site_local_broadcast(&sin6->sin6_addr)) {
++                continue;
++            }
++            memcpy(addr, &sin6->sin6_addr, sizeof(sin6->sin6_addr));
++            *scope_id = sin6->sin6_scope_id;
++        }
++        return true;
++    }
++    return false;
++}
++
++static int nt_dns_query(int af, void *addr, uint32_t *scope_id)
++{
++    struct NtIpAdapterAddresses *list = NULL, *ad, *best = NULL;
++    uint32_t size = 16 * 1024, rc = 0, flags;
++    uint32_t best_metric = 0;
++    bool best_gw = false;
++    int i;
++
++    flags = kNtGaaFlagSkipUnicast | kNtGaaFlagSkipAnycast |
++            kNtGaaFlagSkipMulticast | kNtGaaFlagSkipFriendlyName |
++            kNtGaaFlagIncludeGateways;
++    for (i = 0; i < 5; i++) {
++        g_free(list);
++        list = g_malloc(size);
++        rc = GetAdaptersAddresses(af, flags, NULL, list, &size);
++        if (rc != 111 /* ERROR_BUFFER_OVERFLOW */) {
++            break;
++        }
++    }
++    if (rc != 0) {
++        DEBUG_ERROR("GetAdaptersAddresses failed with error %u", rc);
++        g_free(list);
++        return -1;
++    }
++
++    for (ad = list; ad; ad = ad->Next) {
++        bool gw = ad->FirstGatewayAddress != NULL;
++        uint32_t metric = af == AF_INET ? ad->Ipv4Metric : ad->Ipv6Metric;
++        union {
++            struct in_addr a4;
++            struct in6_addr a6;
++        } tmp;
++        uint32_t tmp_scope;
++
++        if (ad->OperStatus != kNtIfOperStatusUp ||
++            ad->IfType == kNtIfTypeSoftwareLoopback ||
++            !nt_dns_server_of(af, ad, &tmp, &tmp_scope)) {
++            continue;
++        }
++        if (!best || (gw && !best_gw) ||
++            (gw == best_gw && metric < best_metric)) {
++            best = ad;
++            best_gw = gw;
++            best_metric = metric;
++        }
++    }
++
++    rc = best && nt_dns_server_of(af, best, addr, scope_id) ? 0 : -1;
++    g_free(list);
++    return rc;
++}
++
++/* Same contract as get_dns_addr_resolv_conf(), cached for TIMEOUT_DEFAULT */
++static int get_dns_addr_nt(int af, void *pdns_addr, void *cached_addr,
++                           socklen_t addrlen, uint16_t *pdns_port,
++                           uint16_t *cached_port, uint32_t *scope_id,
++                           uint32_t *cached_scope_id, unsigned *cached_time)
++{
++    static const uint8_t zero[16];
++    uint32_t scope = 0;
++
++    if (memcmp(cached_addr, zero, addrlen) != 0 &&
++        curtime - *cached_time < TIMEOUT_DEFAULT) {
++        memcpy(pdns_addr, cached_addr, addrlen);
++        *pdns_port = *cached_port;
++        if (scope_id) {
++            *scope_id = *cached_scope_id;
++        }
++        return 0;
++    }
++
++    if (nt_dns_query(af, pdns_addr, &scope) < 0) {
++        return -1;
++    }
++    memcpy(cached_addr, pdns_addr, addrlen);
++    *pdns_port = *cached_port = htons(53); /* TODO: honor custom port */
++    if (scope_id) {
++        *scope_id = scope;
++    }
++    if (cached_scope_id) {
++        *cached_scope_id = scope;
++    }
++    *cached_time = curtime;
++    return 0;
++}
++#endif /* SLIRP_COSMO_NT_DNS */
++
+ int get_dns_addr(struct in_addr *pdns_addr, uint16_t *pdns_port)
+ {
+     static struct stat dns_addr_stat;
+ 
++#ifdef SLIRP_COSMO_NT_DNS
++    if (IsWindows()) {
++        return get_dns_addr_nt(AF_INET, pdns_addr, &dns_addr,
++                               sizeof(dns_addr), pdns_port, &dns_port,
++                               NULL, NULL, &dns_addr_time);
++    }
++#endif
+     if (dns_addr.s_addr != 0) {
+         int ret;
+         ret = get_dns_addr_cached(pdns_addr, &dns_addr, sizeof(dns_addr),
+@@ -541,6 +693,13 @@ int get_dns6_addr(struct in6_addr *pdns6_addr, uint16_t *pdns6_port,
+ {
+     static struct stat dns6_addr_stat;
+ 
++#ifdef SLIRP_COSMO_NT_DNS
++    if (IsWindows()) {
++        return get_dns_addr_nt(AF_INET6, pdns6_addr, &dns6_addr,
++                               sizeof(dns6_addr), pdns6_port, &dns6_port,
++                               scope_id, &dns6_scope_id, &dns6_addr_time);
++    }
++#endif
+     if (!in6_zero(&dns6_addr)) {
+         int ret;
+         ret = get_dns_addr_cached(pdns6_addr, &dns6_addr, sizeof(dns6_addr),
