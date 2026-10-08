@@ -2,7 +2,7 @@
 
 Cosmopolitan-specific changes applied by `scripts/build.sh` with `patch -p1`, per component and
 upstream version, in filename order. One topic per patch, so a newer upstream means resolving
-conflicts one topic at a time. Patches `03`-`07` and `15` are only needed for the system
+conflicts one topic at a time. Patches `03`-`07`, `15` and `22` are only needed for the system
 emulators.
 
 ## `glib/2.82.4`
@@ -51,6 +51,7 @@ emulators.
 | `19-cosmo-enable-seccomp` | `-sandbox on` for Linux hosts. The filter targets the Linux kernel, so `CLONE_*` and `CSIGNAL` come from `linux/sched.h` (Cosmopolitan has no public header for them) and `seccomp(2)` is a raw system call (`compat/seccomp`). Off Linux, `-sandbox on` fails to load the filter. |
 | `20-cosmo-sandbox-spawn-deny` | `-sandbox on,spawn=deny` on Windows and macOS, where there is no seccomp (`system/cosmo-sandbox.c`): a Seatbelt profile, or the child-process mitigation policy. Every other switch is refused (see the README). |
 | `21-cosmo-sdl2-software-renderer` | On Windows `-display sdl` selects SDL's software renderer: QEMU picks no render driver, so SDL used Direct3D, and the GPU driver's own caught C++ exceptions are fatal under Cosmopolitan (the window flashes and the process dies; OpenGL fails the same way). `SDL_RENDER_DRIVER` in the environment overrides it. |
+| `22-cosmo-ram-discard` | `ram_block_discard_range()`, which backs virtio-balloon (inflate and free page reporting), calls `madvise(MADV_DONTNEED)`. That fails with `EINVAL` on Windows (Cosmopolitan has no `MADV_DONTNEED` there) and on macOS only moves pages to the inactive queue. Private anonymous RAM is discarded through `cosmo_ram_discard()` (`util/cosmo-discard.c`) instead: `DiscardVirtualMemory()` on Windows (loaded with `cosmo_dlopen`, pages stay committed and read back undefined, not zero) and `MADV_FREE` on macOS (frees the pages at once, they read back zero). Shared and file-backed RAM keep the old calls. |
 
 ### Building system emulators
 

@@ -1,0 +1,133 @@
+diff --git a/include/qemu/cosmo-discard.h b/include/qemu/cosmo-discard.h
+new file mode 100644
+index 0000000..8c7d520
+--- /dev/null
++++ b/include/qemu/cosmo-discard.h
+@@ -0,0 +1,16 @@
++/*
++ * Returning guest RAM to the host (Cosmopolitan builds)
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++#ifndef QEMU_COSMO_DISCARD_H
++#define QEMU_COSMO_DISCARD_H
++
++/*
++ * Give the host pages of a private anonymous RAM mapping back to the OS.
++ * Returns 0, or -1 with errno set. Not every host zeroes the range: it only
++ * reads back as zeroes where the pages were freed.
++ */
++int cosmo_ram_discard(void *addr, size_t length);
++
++#endif
+diff --git a/system/physmem.c b/system/physmem.c
+index dc1db3a..3f46d15 100644
+--- a/system/physmem.c
++++ b/system/physmem.c
+@@ -26,6 +26,9 @@
+ #include "qemu/hbitmap.h"
+ #include "qemu/madvise.h"
+ #include "qemu/lockable.h"
++#ifdef __COSMOPOLITAN__
++#include "qemu/cosmo-discard.h"
++#endif
+ 
+ #ifdef CONFIG_TCG
+ #include "hw/core/tcg-cpu-ops.h"
+@@ -3713,6 +3716,10 @@ int ram_block_discard_range(RAMBlock *rb, uint64_t start, size_t length)
+ #if defined(CONFIG_MADVISE)
+             if (qemu_ram_is_shared(rb) && rb->fd < 0) {
+                 ret = madvise(host_startaddr, length, QEMU_MADV_REMOVE);
++#ifdef __COSMOPOLITAN__
++            } else if (rb->fd < 0) {
++                ret = cosmo_ram_discard(host_startaddr, length);
++#endif
+             } else {
+                 ret = madvise(host_startaddr, length, QEMU_MADV_DONTNEED);
+             }
+diff --git a/util/cosmo-discard.c b/util/cosmo-discard.c
+new file mode 100644
+index 0000000..ed0dcad
+--- /dev/null
++++ b/util/cosmo-discard.c
+@@ -0,0 +1,67 @@
++/*
++ * Returning guest RAM to the host (Cosmopolitan builds)
++ *
++ * ram_block_discard_range() backs the virtio-balloon (including free page
++ * reporting) and virtio-mem. Its madvise(MADV_DONTNEED) does not give memory
++ * back on every host this binary runs on:
++ *
++ *   Windows  MADV_DONTNEED is not implemented, so the call fails with EINVAL
++ *            (and MADV_FREE is OfferVirtualMemory(), whose pages must be
++ *            reclaimed before use). RAM is a VirtualAlloc region, so
++ *            DiscardVirtualMemory() frees its pages and keeps them committed.
++ *   macOS    MADV_DONTNEED only moves pages to the inactive queue. MADV_FREE
++ *            frees them at once when the mapping is the only user of its
++ *            memory object, as private anonymous RAM is.
++ *   others   MADV_DONTNEED frees the pages.
++ *
++ * DiscardVirtualMemory() is loaded at run time with cosmo_dlopen(), like the
++ * WHPX and HVF accelerators, since nothing here may be linked on other hosts.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ */
++
++#include "qemu/osdep.h"
++#include "qemu/cosmo-discard.h"
++
++#include <cosmo.h>
++#include <dlfcn.h>
++
++typedef uint32_t (*DiscardVirtualMemory_fn)(void *, size_t);
++
++static DiscardVirtualMemory_fn windows_discard_fn;
++
++static gpointer windows_discard_init(gpointer unused)
++{
++    void *k32 = cosmo_dlopen("kernel32.dll", RTLD_NOW);
++    void *fn = k32 ? cosmo_dlsym(k32, "DiscardVirtualMemory") : NULL;
++
++    /* cosmo_dltramp() would wrap NULL, and the caller tests for it */
++    windows_discard_fn = fn ? cosmo_dltramp(fn) : NULL;
++    return NULL;
++}
++
++/* DiscardVirtualMemory() returns a Win32 error code, 0 on success */
++static int windows_discard(void *addr, size_t length)
++{
++    static GOnce once = G_ONCE_INIT;
++
++    g_once(&once, windows_discard_init, NULL);
++    if (!windows_discard_fn) {
++        /* Windows before 8.1 */
++        errno = ENOSYS;
++        return -1;
++    }
++    if (windows_discard_fn(addr, length)) {
++        errno = EINVAL;
++        return -1;
++    }
++    return 0;
++}
++
++int cosmo_ram_discard(void *addr, size_t length)
++{
++    if (IsWindows()) {
++        return windows_discard(addr, length);
++    }
++    return madvise(addr, length, IsXnu() ? MADV_FREE : MADV_DONTNEED);
++}
+diff --git a/util/meson.build b/util/meson.build
+index 84f8810..d83fa14 100644
+--- a/util/meson.build
++++ b/util/meson.build
+@@ -1,5 +1,8 @@
+ util_ss.add(files('osdep.c', 'cutils.c', 'unicode.c', 'qemu-timer-common.c'))
+ util_ss.add(files('cosmo-sscanf.c'))
++if host_os == 'cosmopolitan'
++  util_ss.add(files('cosmo-discard.c'))
++endif
+ util_ss.add(files('thread-context.c'), numa)
+ if not config_host_data.get('CONFIG_ATOMIC64')
+   util_ss.add(files('atomic64.c'))

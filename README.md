@@ -71,6 +71,22 @@ CI runs `scripts/smoke_test_sdl.sh` on every runner (Linux under Xvfb): the gues
 Device nodes and symlink containment are limited off Linux (patch `15`). Only Linux has been run: "expected"
 means the macOS and Windows code is written for it but untested.
 
+## Memory ballooning
+
+`-device virtio-balloon-pci` (with `free-page-reporting=on` and `deflate-on-oom=on`) returns guest RAM to the
+host, so a guest can be given most of the host's memory and still follow its pressure (patch `22`):
+
+| Host | Guest pages given back | Notes |
+| --- | --- | --- |
+| Linux | freed (`MADV_DONTNEED`) | |
+| macOS | expected (`MADV_FREE`) | Apple Silicon hosts use 16 KiB pages: the guest must give back whole, aligned 16 KiB ranges. |
+| Windows | expected (`DiscardVirtualMemory`) | Windows 8.1 or later. Guest RAM must be private anonymous memory (the default). |
+
+CI inflates a legacy virtio-balloon from a boot sector on every runner and fails if QEMU reports a page it could not
+discard. Only Linux has been run: "expected" means the macOS and Windows code is written for it but untested. The test does
+not measure the host's memory use, and the balloon is untested with WHPX and HVF guests.
+virtio-mem is not built (it needs Linux). `memory-backend-*` objects with `share=on` or a file keep the old calls.
+
 ## Sandboxing
 
 `-sandbox on` is enforced differently per host:

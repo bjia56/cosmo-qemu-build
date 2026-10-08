@@ -115,6 +115,41 @@ x86_64)
     else
         echo "skip - KVM boot test (no usable /dev/kvm)"
     fi
+
+    # Returning guest RAM to the host: virtio-balloon calls ram_block_discard_range() for every
+    # page the guest hands over (QEMU patch 22). This boot sector (source: scripts/lib/balloon_boot.asm)
+    # finds a legacy virtio-balloon on the PCI bus, puts the 256 pages at 4 MiB into its inflate queue
+    # and reports them in the device's "actual" register. A host that cannot discard RAM makes QEMU
+    # print "Failed to discard range" for each of them.
+    printf '\372\061\300\216\330\216\320\274\000\160\061\333\146\211\330\146\301\340\013\146\015\000\000\000\200\272\370\014\146\357\272\374' > balloon.img
+    printf '\014\146\355\146\075\364\032\002\020\164\007\103\203\373\040\162\333\364\146\211\330\146\301\340\013\146\015\020\000\000\200\272' >> balloon.img
+    printf '\370\014\146\357\272\374\014\146\355\203\340\374\211\306\146\211\330\146\301\340\013\146\015\004\000\000\200\272\370\014\146\357' >> balloon.img
+    printf '\272\374\014\270\007\000\357\270\000\040\216\300\061\377\061\300\271\000\030\374\363\253\046\146\307\006\000\000\000\040\002\000' >> balloon.img
+    printf '\046\146\307\006\010\000\000\004\000\000\046\307\006\002\010\001\000\277\000\040\146\270\000\004\000\000\046\146\211\005\203\307' >> balloon.img
+    printf '\004\146\100\146\075\000\005\000\000\162\357\215\124\016\061\300\357\215\124\010\146\270\040\000\000\000\146\357\215\124\022\260' >> balloon.img
+    printf '\007\356\215\124\020\061\300\357\046\203\076\002\020\000\164\370\215\124\030\146\270\000\001\000\000\146\357\276\370\174\254\204' >> balloon.img
+    printf '\300\164\022\210\304\272\375\003\354\250\040\164\373\272\370\003\210\340\356\353\351\364\353\375\102\101\114\114\117\117\116\055' >> balloon.img
+    printf '\111\116\106\114\101\124\105\104\015\012\000' >> balloon.img
+    pad=$((510 - $(wc -c < balloon.img)))
+    head -c $pad /dev/zero >> balloon.img
+    printf '\125\252' >> balloon.img
+
+    : > ser.txt
+    : > out.txt
+    {
+        n=0
+        while [ $n -lt "$TIMEOUT" ] && ! grep -a -q 'BALLOON-INFLATED' ser.txt 2>/dev/null; do
+            sleep 1
+            n=$((n + 1))
+        done
+        printf 'info balloon\nquit\n'
+    } | $QEMU -display none -parallel none -no-reboot -m 64 -machine pc -accel tcg \
+        -drive format=raw,file=balloon.img,if=floppy -device virtio-balloon-pci-transitional \
+        -serial file:ser.txt -monitor stdio > out.txt 2>&1 || true
+    grep -a -q 'BALLOON-INFLATED' ser.txt || fail "balloon boot sector inflates the balloon"
+    grep -a -q 'balloon: actual=63' out.txt || fail "info balloon reports 1 MiB inflated"
+    if grep -a -q 'Failed to discard range' out.txt; then fail "inflated balloon pages are discarded"; fi
+    pass "virtio-balloon inflate discards guest RAM"
     ;;
 aarch64)
     MACHINE_ARGS="-machine virt -cpu cortex-a57 -accel tcg"
