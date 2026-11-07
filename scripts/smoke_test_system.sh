@@ -197,10 +197,14 @@ riscv64)
     pass "bare-metal payload on virt with -bios none (TCG)"
 
     # edk2 runs from pflash on top of OpenSBI. Unlike -bios, -drive does not search the data
-    # directory, so it is named by its path in the embedded zip.
+    # directory, so it is named by its path in the embedded zip. Git Bash would rewrite that path into
+    # one under its own install directory, unless told to leave the argument alone.
+    MSYS2_ARG_CONV_EXCL='if=pflash'
+    export MSYS2_ARG_CONV_EXCL
     run_guest "UEFI|EDK II|Tianocore|BdsDxe" -machine virt -accel tcg \
         -drive if=pflash,unit=0,format=raw,readonly=on,file.locking=off,file=/zip/share/qemu/edk2-riscv-code.fd \
         || fail "edk2 firmware from the embedded zip"
+    unset MSYS2_ARG_CONV_EXCL
     pass "edk2-riscv firmware from the embedded zip (TCG)"
     ;;
 *)

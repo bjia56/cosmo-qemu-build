@@ -32,6 +32,7 @@ For UEFI, put edk2 in the first flash device. `-drive` does not search the data 
 inside the executable: `-drive if=pflash,unit=0,format=raw,readonly=on,file.locking=off,file=/zip/share/qemu/edk2-riscv-code.fd`.
 For writable UEFI variables, copy the template out first (`unzip -p qemu-system-riscv64.com share/qemu/edk2-riscv-vars.fd > vars.fd`)
 and add `-drive if=pflash,unit=1,format=raw,file=vars.fd`.
+In Git Bash (MSYS2), set `MSYS2_ARG_CONV_EXCL='if=pflash'`, or it rewrites `/zip/...` into a path under its install directory.
 
 CI builds on Linux, then runs the smoke tests on native runners: Linux x86_64 and aarch64, macOS arm64 and
 Windows x86_64, and all of them must pass for a release. A WHPX guest boots on the Windows runner. KVM and
