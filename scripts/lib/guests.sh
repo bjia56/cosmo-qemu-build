@@ -15,7 +15,8 @@ guest_firmware_regex() {
         x86_64) echo '^(bios(-256k|-microvm)?\.bin|qboot\.rom|vgabios.*\.bin|kvmvapic\.bin|linuxboot(_dma)?\.bin|multiboot(_dma)?\.bin|pvh\.bin|sgabios\.bin|efi-.*\.rom|edk2-(x86_64|i386)-.*\.fd|edk2-licenses\.txt|firmware/.*(x86_64|i386).*\.json|keymaps/.+)$' ;;
         aarch64) echo '^(vgabios.*\.bin|efi-.*\.rom|edk2-aarch64-.*\.fd|edk2-licenses\.txt|firmware/.*aarch64.*\.json|keymaps/.+)$' ;;
         # OpenSBI is the default -bios of the virt machine; edk2 runs on top of it from pflash
-        riscv64) echo '^(opensbi-riscv64-generic-fw_dynamic\.bin|vgabios.*\.bin|efi-.*\.rom|edk2-riscv-.*\.fd|edk2-licenses\.txt|firmware/.*riscv64.*\.json|keymaps/.+)$' ;;
+        # (QEMU 9.2 ships no firmware descriptor for it)
+        riscv64) echo '^(opensbi-riscv64-generic-fw_dynamic\.bin|vgabios.*\.bin|efi-.*\.rom|edk2-riscv-.*\.fd|edk2-licenses\.txt|keymaps/.+)$' ;;
         *) return 1 ;;
     esac
 }
