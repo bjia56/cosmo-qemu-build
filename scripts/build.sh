@@ -1,6 +1,6 @@
 #!/bin/bash
 # SPDX-License-Identifier: MIT
-# Builds qemu-img and the QEMU system emulators for x86_64 and aarch64 with Cosmopolitan
+# Builds qemu-img and the QEMU system emulators (scripts/lib/guests.sh) with Cosmopolitan
 # libc and joins both architectures into one fat APE per program (apelink).
 # Outputs: out/qemu-img.com and out/qemu-system-<guest>.com (firmware embedded in /zip).
 # Dependencies cosmocc lacks (glib, pixman, ...) are built into a per-architecture sysroot first.
@@ -18,8 +18,8 @@
 # Optional environment:
 #   JOBS                 parallel build jobs (default: nproc)
 #   ARCHES               host architectures (default: "x86_64 aarch64")
-#   SYSTEM_TARGETS       guest architectures to build emulators for
-#                        (default: "x86_64 aarch64"; empty builds qemu-img only)
+#   SYSTEM_TARGETS       guest architectures to build emulators for (default: every guest in
+#                        scripts/lib/guests.sh; empty builds qemu-img only)
 #   BUILD_DIR            build tree location (default: ./build)
 #   OUT_DIR              output location (default: ./out)
 #   EXE_WRAPPER_<arch>   command used to run <arch> test programs
@@ -46,9 +46,12 @@ LOG_DIR="${BUILD_DIR}/logs"
 SRC_DIR="${BUILD_DIR}/source"
 TOOLS_DIR="${BUILD_DIR}/tools"
 
+# shellcheck source=lib/guests.sh
+. "${SCRIPT_DIR}/lib/guests.sh"
+
 JOBS="${JOBS:-$(nproc)}"
 ARCHES="${ARCHES:-x86_64 aarch64}"
-SYSTEM_TARGETS="${SYSTEM_TARGETS-x86_64 aarch64}"
+SYSTEM_TARGETS="${SYSTEM_TARGETS-${SUPPORTED_GUESTS}}"
 
 # The QEMU release to build: a tag from https://gitlab.com/qemu-project/qemu/-/tags
 # (patches/qemu/<tag> holds the changes for it)
@@ -180,10 +183,8 @@ if [[ " ${ARCHES} " == *" aarch64 "* ]] && [ -z "${EXE_WRAPPER_aarch64:-}" ]; th
 or set EXE_WRAPPER_aarch64 to another wrapper)"
 fi
 for guest in $SYSTEM_TARGETS; do
-    case "$guest" in
-        x86_64|aarch64) ;;
-        *) die "unsupported system emulator target '${guest}' (supported: x86_64 aarch64)" ;;
-    esac
+    is_supported_guest "$guest" \
+        || die "unsupported system emulator target '${guest}' (supported: ${SUPPORTED_GUESTS})"
 done
 
 COSMO_BIN="$(cd "$(dirname "$(command -v cosmocc)")" && pwd)"

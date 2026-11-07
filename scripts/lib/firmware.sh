@@ -2,13 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Firmware and SDL2 libraries embedded in the system emulators. Sourced by scripts/build.sh.
 
-# regex of files under share/qemu to embed for <guest>
-guest_firmware_regex() {
-    case "$1" in
-        x86_64) echo '^(bios(-256k|-microvm)?\.bin|qboot\.rom|vgabios.*\.bin|kvmvapic\.bin|linuxboot(_dma)?\.bin|multiboot(_dma)?\.bin|pvh\.bin|sgabios\.bin|efi-.*\.rom|edk2-(x86_64|i386)-.*\.fd|edk2-licenses\.txt|firmware/.*(x86_64|i386).*\.json|keymaps/.+)$' ;;
-        aarch64) echo '^(vgabios.*\.bin|efi-.*\.rom|edk2-aarch64-.*\.fd|edk2-licenses\.txt|firmware/.*aarch64.*\.json|keymaps/.+)$' ;;
-    esac
-}
+# The firmware each guest embeds is listed in guests.sh (guest_firmware_regex).
 
 # stage_firmware <guest> <qemu build dir> <destination>
 stage_firmware() {

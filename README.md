@@ -9,6 +9,7 @@ runs on Linux, macOS and Windows, on x86_64 and aarch64.
 | `qemu-img.com` | Disk image tool. |
 | `qemu-system-x86_64.com` | x86_64 system emulator, firmware (SeaBIOS, edk2, ...) embedded. |
 | `qemu-system-aarch64.com` | aarch64 system emulator, edk2 firmware embedded. |
+| `qemu-system-riscv64.com` | riscv64 system emulator (TCG only), OpenSBI and edk2 firmware embedded. |
 
 ## Acceleration
 
@@ -21,6 +22,16 @@ The system emulators choose an accelerator at run time, and TCG (software emulat
 | HVF | macOS on Apple Silicon, aarch64 guests | See below. |
 
 Use `-machine accel=kvm:tcg` (or `whpx:tcg`, `hvf:tcg`) to try an accelerator and fall back to TCG.
+
+Guests without a hardware accelerator (riscv64) always use TCG.
+
+## riscv64 guests
+
+The `virt` machine boots the embedded OpenSBI by default (`-kernel` takes an S-mode payload or Linux kernel).
+For UEFI, put edk2 in the first flash device. `-drive` does not search the data directory, so name the file by its path
+inside the executable: `-drive if=pflash,unit=0,format=raw,readonly=on,file.locking=off,file=/zip/share/qemu/edk2-riscv-code.fd`.
+For writable UEFI variables, copy the template out first (`unzip -p qemu-system-riscv64.com share/qemu/edk2-riscv-vars.fd > vars.fd`)
+and add `-drive if=pflash,unit=1,format=raw,file=vars.fd`.
 
 CI builds on Linux, then runs the smoke tests on native runners: Linux x86_64 and aarch64, macOS arm64 and
 Windows x86_64, and all of them must pass for a release. A WHPX guest boots on the Windows runner. KVM and
@@ -128,7 +139,9 @@ sysroot, builds QEMU from a tagged release, and joins both architectures with `a
 changes are in [`patches/`](patches); [`compat/`](compat) holds header shims and the macOS loader patch.
 Sources are checked against pinned commits and downloads against pinned SHA-256 sums.
 
-Environment variables are documented at the top of [`scripts/build.sh`](scripts/build.sh). Only
+The guest architectures and the firmware each emulator embeds are listed in
+[`scripts/lib/guests.sh`](scripts/lib/guests.sh), which also says what else adding one involves; `SYSTEM_TARGETS=riscv64`
+builds a subset. Environment variables are documented at the top of [`scripts/build.sh`](scripts/build.sh). Only
 `QEMU_VERSION`s with a directory under [`patches/qemu/`](patches/qemu) work (currently `v9.2.0`).
 
 ## License

@@ -9,6 +9,7 @@ set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "${SCRIPT_DIR}/lib/smoke_common.sh"
+. "${SCRIPT_DIR}/lib/guests.sh"
 DIR="$(cd "${1:-${SCRIPT_DIR}/../out}" && pwd)"
 [ $# -gt 0 ] && shift
 stages="${*:-img system sandbox system-sandbox sdl}"
@@ -40,7 +41,7 @@ step() {
 }
 
 guests=""
-for guest in x86_64 aarch64; do
+for guest in $SUPPORTED_GUESTS; do
     [ -f "$DIR/qemu-system-${guest}.com" ] && guests="$guests $guest"
 done
 [ -n "$guests" ] || { echo "no qemu-system-*.com in $DIR" >&2; exit 2; }

@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: MIT
 # Smoke test for a built qemu-system-* emulator.
-# Usage: ./scripts/smoke_test_system.sh "sh /path/to/qemu-system-x86_64.com" x86_64|aarch64
+# Usage: ./scripts/smoke_test_system.sh "sh /path/to/qemu-system-x86_64.com" <guest>
 # Firmware is deliberately not passed with -L: it must come from the embedded /zip.
 # Runs with TCG, plus KVM when /dev/kvm is usable and the guest matches the host.
 
@@ -10,7 +10,7 @@ set -eu
 QEMU="${1:-${QEMU_SYSTEM:-}}"
 GUEST="${2:-${QEMU_GUEST:-}}"
 if [ -z "$QEMU" ] || [ -z "$GUEST" ]; then
-    echo "usage: $0 <qemu-system command> <x86_64|aarch64>" >&2
+    echo "usage: $0 <qemu-system command> <guest (scripts/lib/guests.sh)>" >&2
     exit 2
 fi
 
@@ -177,6 +177,31 @@ aarch64)
     else
         echo "skip - KVM boot test (no usable /dev/kvm)"
     fi
+    ;;
+riscv64)
+    MACHINE_ARGS="-machine virt -accel tcg"
+    GPU_ARGS="-device virtio-gpu-pci"
+    # S-mode payload for the virt machine's NS16550 UART at 0x10000000 (source: scripts/lib/riscv64_boot.S).
+    # -kernel puts it at 0x80200000, where the default -bios, the embedded OpenSBI, jumps after its banner.
+    printf '\067\005\000\020\227\005\000\000\223\205\005\003\003\306\005\000\143\016\006\000\203\106\125\000\223\366\006\002\343\214\006\376\043\000\305\000\223\205\025\000\157\360\137\376\163\000\120\020\157\360\337\377COSMO-RISCV64-BOOT-OK\n\0' > payload.bin
+
+    run_guest "COSMO-RISCV64-BOOT-OK" -machine virt -accel tcg -kernel payload.bin \
+        || fail "payload on virt through OpenSBI (TCG)"
+    grep -a -q 'OpenSBI v' out.txt || fail "OpenSBI banner (embedded firmware)"
+    pass "payload on virt with embedded OpenSBI (TCG)"
+
+    # The same payload in M-mode, with no firmware
+    run_guest "COSMO-RISCV64-BOOT-OK" -machine virt -accel tcg -bios none \
+        -device loader,file=payload.bin,addr=0x80000000,cpu-num=0 \
+        || fail "bare-metal payload on virt (TCG)"
+    pass "bare-metal payload on virt with -bios none (TCG)"
+
+    # edk2 runs from pflash on top of OpenSBI. Unlike -bios, -drive does not search the data
+    # directory, so it is named by its path in the embedded zip.
+    run_guest "UEFI|EDK II|Tianocore|BdsDxe" -machine virt -accel tcg \
+        -drive if=pflash,unit=0,format=raw,readonly=on,file.locking=off,file=/zip/share/qemu/edk2-riscv-code.fd \
+        || fail "edk2 firmware from the embedded zip"
+    pass "edk2-riscv firmware from the embedded zip (TCG)"
     ;;
 *)
     echo "unsupported guest architecture: $GUEST" >&2

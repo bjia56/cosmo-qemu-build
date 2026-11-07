@@ -24,6 +24,15 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      # upload-artifact takes one name per step: every guest in scripts/lib/guests.sh needs an upload step below
+      - name: Check that every guest has an upload step
+        run: |
+          . scripts/lib/guests.sh
+          for g in $SUPPORTED_GUESTS; do
+            grep -q "^          name: qemu-system-${g}\$" .github/workflows/build.yml \
+              || { echo "no upload step for qemu-system-${g} in .github/workflows/build.yml" >&2; exit 1; }
+          done
+
       - name: Setup cosmocc
         uses: bjia56/setup-cosmocc@c0097c34319baeca1b41cc857ec5c643f2f5baf6 # v0.0.6
         with:
@@ -59,6 +68,13 @@ jobs:
         with:
           name: qemu-system-aarch64
           path: out/qemu-system-aarch64.com
+          if-no-files-found: error
+
+      - name: Upload qemu-system-riscv64
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qemu-system-riscv64
+          path: out/qemu-system-riscv64.com
           if-no-files-found: error
 
       - name: Upload build logs on failure
@@ -103,7 +119,8 @@ jobs:
       - name: Download the executables
         run: |
           mkdir dist
-          for n in qemu-img qemu-system-x86_64 qemu-system-aarch64; do
+          . scripts/lib/guests.sh
+          for n in qemu-img $(for g in $SUPPORTED_GUESTS; do echo "qemu-system-$g"; done); do
             gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$n" --dir dist
           done
           ls -l dist
@@ -177,7 +194,8 @@ jobs:
       - name: Download build artifacts
         run: |
           mkdir dist
-          for n in qemu-img qemu-system-x86_64 qemu-system-aarch64; do
+          . scripts/lib/guests.sh
+          for n in qemu-img $(for g in $SUPPORTED_GUESTS; do echo "qemu-system-$g"; done); do
             gh run download "$GITHUB_RUN_ID" --name "$n" --dir dist
           done
           ls -l dist
