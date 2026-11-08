@@ -55,9 +55,10 @@ write_notices() {
             echo "================================================================"
             echo "Firmware embedded in the system emulators"
             echo "================================================================"
-            echo "SeaBIOS, edk2 and the other firmware and data files under share/qemu are"
-            echo "built or bundled by QEMU; see edk2-licenses.txt inside the executables and"
-            echo "the QEMU source tree (pc-bios/README and each component's license)."
+            echo "The firmware and data files under share/qemu (SeaBIOS, edk2, OpenSBI,"
+            echo "OpenBIOS, SLOF, skiboot, U-Boot, ..., depending on the emulator) are built or"
+            echo "bundled by QEMU; see the QEMU source tree (pc-bios/README and each component's"
+            echo "license) and, where edk2 is embedded, edk2-licenses.txt inside the executable."
         fi
     } > "${out}"
 }

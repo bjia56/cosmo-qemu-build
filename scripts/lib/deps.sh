@@ -156,12 +156,14 @@ EOF
     fi
 }
 
-# deps_key <arch>: identifies what build_deps produces for <arch>, so a sysroot built from the same
-# inputs is reused (build.sh, and CI's cache key, which hashes the same files).
+# deps_key <arch> <sysroot>: identifies what build_deps produces for <arch>, so a sysroot built from
+# the same inputs is reused (build.sh; CI's cache key hashes the same project files and the cosmocc
+# release). The sysroot's own path is part of it because its pkg-config files name it. The
+# toolchain is identified by its libc, since "cosmocc --version" only names the GCC release.
 deps_key() {
     {
-        echo "$1 system=$([ -n "${SYSTEM_TARGETS}" ] && echo yes || echo no)"
-        "${COSMO_BIN}/cosmocc" --version | head -n 1
+        echo "$1 system=$([ -n "${SYSTEM_TARGETS}" ] && echo yes || echo no) sysroot=$2"
+        sha256sum "${COSMO_BIN}/cosmocc" "${COSMO_BIN}/../$1-linux-cosmo/lib/libcosmo.a" | cut -d' ' -f1
         cd "${PROJECT_ROOT}" && find scripts/build.sh scripts/lib/common.sh scripts/lib/deps.sh \
             scripts/lib/headers.sh scripts/lib/toolchain.sh patches/glib patches/libslirp \
             patches/libseccomp compat -type f | LC_ALL=C sort | xargs sha256sum

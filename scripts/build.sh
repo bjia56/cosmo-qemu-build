@@ -194,6 +194,15 @@ done
 
 COSMO_BIN="$(cd "$(dirname "$(command -v cosmocc)")" && pwd)"
 
+# BUILD_STAGE=qemu: fail before fetching anything if a sysroot is missing or out of date
+if [ "${BUILD_STAGE}" = "qemu" ]; then
+    for arch in ${ARCHES}; do
+        S="${BUILD_DIR}/${arch}/sysroot"
+        [ -f "${S}/.deps-key" ] && [ "$(cat "${S}/.deps-key")" = "$(deps_key "${arch}" "${S}")" ] \
+            || die "no ${arch} sysroot built from the current inputs in ${S} (BUILD_STAGE=qemu); build it with BUILD_STAGE=deps"
+    done
+fi
+
 echo "Found toolchain:"
 echo "  cosmocc: $(command -v cosmocc)"
 echo "  apelink: $(command -v apelink)"
@@ -265,19 +274,15 @@ for arch in $ARCHES; do
     B="${BUILD_DIR}/${arch}"
     S="${B}/sysroot"
     mkdir -p "${B}" "${S}"
-    key="$(deps_key "${arch}")"
+    key="$(deps_key "${arch}" "${S}")"
     if [ -f "${S}/.deps-key" ] && [ "$(cat "${S}/.deps-key")" = "${key}" ]; then
         echo "  reusing the ${arch} sysroot (${key:0:12})"
     else
-        [ "${BUILD_STAGE}" != "qemu" ] \
-            || die "no ${arch} sysroot built from the current inputs in ${S} (BUILD_STAGE=qemu); build it with BUILD_STAGE=deps"
         rm -rf "${S}" && mkdir -p "${S}"
         build_deps "${arch}" "${S}" "${B}"
         echo "${key}" > "${S}/.deps-key"
     fi
     [ "${BUILD_STAGE}" = "deps" ] && continue
-    # QEMU's configure prefers these to its --cross-prefix, and a reused sysroot does not set them
-    export CC="${arch}-cosmo-cc" AR="${arch}-cosmo-ar" RANLIB="${arch}-cosmo-ranlib"
     [ -z "${SYSTEM_TARGETS}" ] || stage_accel_headers "${arch}" "${S}"
     build_qemu "${arch}" "${S}" "${B}"
     unset COSMO_MCOSMO

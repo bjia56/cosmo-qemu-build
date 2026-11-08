@@ -26,6 +26,17 @@ Use `-machine accel=kvm:tcg` (or `whpx:tcg`, `hvf:tcg`) to try an accelerator an
 
 Guests without a hardware accelerator (riscv64, ppc64) always use TCG.
 
+CI builds on Linux, one job per emulator, then runs the smoke tests for each emulator on native runners: Linux
+x86_64 and aarch64, macOS arm64 and Windows x86_64, and all of them must pass for a release. A WHPX guest boots
+on the Windows runner. KVM and HVF need hardware the runners do not provide and are untested.
+
+HVF needs the `com.apple.security.hypervisor` entitlement on the loader that Cosmopolitan compiles on first
+run (needs the Xcode command line tools). The executables use their own loader, `.q.ape-01` in
+`${TMPDIR:-$HOME}`, which signs itself on first use; see [`patches/README.md`](patches/README.md).
+
+Not included: network block drivers (curl, ssh, nfs, rbd, gluster), SASL, libgcrypt, io_uring, linux-aio,
+GTK, OpenGL and vhost.
+
 ## riscv64 guests
 
 The `virt` machine boots the embedded OpenSBI by default (`-kernel` takes an S-mode payload or Linux kernel).
@@ -148,7 +159,7 @@ Sources are checked against pinned commits and downloads against pinned SHA-256 
 The guest architectures and the firmware each emulator embeds are listed in
 [`scripts/lib/guests.sh`](scripts/lib/guests.sh), which also says what else adding one involves; `SYSTEM_TARGETS=riscv64`
 builds a subset. Each host architecture's sysroot of dependencies is kept in `build/` and reused while
-its inputs are unchanged, so a second run only builds QEMU. Environment variables are documented at the top of [`scripts/build.sh`](scripts/build.sh). Only
+its inputs are unchanged, so a later run fetches and patches the sources again but compiles only QEMU. Environment variables are documented at the top of [`scripts/build.sh`](scripts/build.sh). Only
 `QEMU_VERSION`s with a directory under [`patches/qemu/`](patches/qemu) work (currently `v9.2.0`).
 
 ## License
