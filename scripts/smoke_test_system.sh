@@ -207,6 +207,27 @@ riscv64)
     unset MSYS2_ARG_CONV_EXCL
     pass "edk2-riscv firmware from the embedded zip (TCG)"
     ;;
+ppc)
+    MACHINE_ARGS="-machine mac99 -accel tcg"
+    GPU_ARGS="-vga std"
+    # Each machine's default firmware comes from the embedded zip and reports the emulated CPU
+    # on the serial console. OpenBIOS (the Macs) runs Forth on the guest CPU before it gets there.
+    run_guest "CPU type PowerPC,750" -machine g3beige -accel tcg \
+        || fail "OpenBIOS on g3beige (TCG)"
+    pass "embedded OpenBIOS on g3beige, PowerPC 750 (TCG)"
+
+    run_guest "CPU type PowerPC,G4" -machine mac99,via=pmu -accel tcg \
+        || fail "OpenBIOS on mac99 (TCG)"
+    pass "embedded OpenBIOS on mac99, G4 (TCG)"
+
+    run_guest "Core: +e500" -machine ppce500 -accel tcg \
+        || fail "U-Boot on ppce500 (TCG)"
+    pass "embedded U-Boot on ppce500 (TCG)"
+
+    run_guest "Board: Sam460ex" -machine sam460ex -accel tcg \
+        || fail "U-Boot on sam460ex (TCG)"
+    pass "embedded U-Boot and device tree on sam460ex (TCG)"
+    ;;
 *)
     echo "unsupported guest architecture: $GUEST" >&2
     exit 2

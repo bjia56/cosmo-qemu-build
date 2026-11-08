@@ -10,6 +10,7 @@ runs on Linux, macOS and Windows, on x86_64 and aarch64.
 | `qemu-system-x86_64.com` | x86_64 system emulator, firmware (SeaBIOS, edk2, ...) embedded. |
 | `qemu-system-aarch64.com` | aarch64 system emulator, edk2 firmware embedded. |
 | `qemu-system-riscv64.com` | riscv64 system emulator (TCG only), OpenSBI and edk2 firmware embedded. |
+| `qemu-system-ppc.com` | 32-bit PowerPC system emulator (TCG only): Power Macintosh (`mac99`, `g3beige`), `pegasos2`, `sam460ex`, `ppce500` and more; OpenBIOS, U-Boot and VOF embedded. |
 
 ## Acceleration
 
@@ -23,7 +24,7 @@ The system emulators choose an accelerator at run time, and TCG (software emulat
 
 Use `-machine accel=kvm:tcg` (or `whpx:tcg`, `hvf:tcg`) to try an accelerator and fall back to TCG.
 
-Guests without a hardware accelerator (riscv64) always use TCG.
+Guests without a hardware accelerator (riscv64, ppc) always use TCG.
 
 ## riscv64 guests
 
@@ -33,6 +34,13 @@ inside the executable: `-drive if=pflash,unit=0,format=raw,readonly=on,file.lock
 For writable UEFI variables, copy the template out first (`unzip -p qemu-system-riscv64.com share/qemu/edk2-riscv-vars.fd > vars.fd`)
 and add `-drive if=pflash,unit=1,format=raw,file=vars.fd`.
 In Git Bash (MSYS2), set `MSYS2_ARG_CONV_EXCL='if=pflash'`, or it rewrites `/zip/...` into a path under its install directory.
+
+## PowerPC Macs
+
+`-machine mac99` is a G4 Power Mac and `-machine g3beige` a beige G3, both booting the embedded OpenBIOS, which hands
+Mac OS the `qemu_vga.ndrv` display driver. Mac OS X wants `-machine mac99,via=pmu` (USB keyboard and mouse); Mac OS 9 also
+runs on `mac99`. For example: `./qemu-system-ppc.com -machine mac99,via=pmu -m 512 -cdrom install.iso -boot d -vnc 127.0.0.1:0`.
+The G5 (`-cpu 970`) is in `qemu-system-ppc64`, which is not built.
 
 CI builds on Linux, then runs the smoke tests on native runners: Linux x86_64 and aarch64, macOS arm64 and
 Windows x86_64, and all of them must pass for a release. A WHPX guest boots on the Windows runner. KVM and
