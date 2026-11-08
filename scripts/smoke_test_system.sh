@@ -63,6 +63,14 @@ else
     pass "-accel help lists tcg (no KVM expected: host $host_arch, guest $GUEST)"
 fi
 
+# Each guest's case below boots its firmware or a payload and sets the machine and devices the
+# shared tests after it use. The device defaults need PCI; a guest without it overrides them, and
+# an empty GPU_ARGS skips the screendump test.
+MACHINE_ARGS=""
+GPU_ARGS=""
+NET_DEVICE="virtio-net-pci"
+P9_DEVICE="virtio-9p-pci"
+
 case "$GUEST" in
 x86_64)
     MACHINE_ARGS="-machine pc -accel tcg"
@@ -207,18 +215,32 @@ riscv64)
     unset MSYS2_ARG_CONV_EXCL
     pass "edk2-riscv firmware from the embedded zip (TCG)"
     ;;
-ppc)
-    MACHINE_ARGS="-machine mac99 -accel tcg"
+ppc64)
+    MACHINE_ARGS="-machine pseries -m 512 -accel tcg"
     GPU_ARGS="-vga std"
-    # Each machine's default firmware comes from the embedded zip and reports the emulated CPU
-    # on the serial console. OpenBIOS (the Macs) runs Forth on the guest CPU before it gets there.
+    # Each machine's default firmware comes from the embedded zip and reports the emulated CPU or
+    # board on the serial console. OpenBIOS and SLOF run Forth on the guest CPU before they get there.
     run_guest "CPU type PowerPC,750" -machine g3beige -accel tcg \
         || fail "OpenBIOS on g3beige (TCG)"
     pass "embedded OpenBIOS on g3beige, PowerPC 750 (TCG)"
 
-    run_guest "CPU type PowerPC,G4" -machine mac99,via=pmu -accel tcg \
-        || fail "OpenBIOS on mac99 (TCG)"
+    # mac99 is a G5 by default in qemu-system-ppc64; -cpu G4 makes it the 32-bit Power Mac
+    run_guest "CPU type PowerPC,G4" -machine mac99,via=pmu -cpu G4 -accel tcg \
+        || fail "OpenBIOS on mac99 with a G4 (TCG)"
     pass "embedded OpenBIOS on mac99, G4 (TCG)"
+
+    run_guest "CPU type PowerPC,970FX" -machine mac99 -accel tcg \
+        || fail "OpenBIOS on mac99 with a G5 (TCG)"
+    pass "embedded OpenBIOS on mac99, G5 (TCG)"
+
+    run_guest "Populating /vdevice" -machine pseries -m 512 -accel tcg \
+        || fail "SLOF on pseries (TCG)"
+    grep -a -q 'SLOF' out.txt || fail "SLOF banner on pseries"
+    pass "embedded SLOF on pseries (TCG)"
+
+    run_guest "OPAL v[0-9]" -machine powernv -m 1G -accel tcg \
+        || fail "skiboot on powernv (TCG)"
+    pass "embedded skiboot (OPAL) on powernv (TCG)"
 
     run_guest "Core: +e500" -machine ppce500 -accel tcg \
         || fail "U-Boot on ppce500 (TCG)"
@@ -258,7 +280,7 @@ monitor_cmds() {
 PORT=$((20000 + $$ % 20000))
 
 monitor_cmds "info usernet" \
-    -netdev "user,id=n0,hostfwd=tcp:127.0.0.1:${PORT}-:22" -device virtio-net-pci,netdev=n0 \
+    -netdev "user,id=n0,hostfwd=tcp:127.0.0.1:${PORT}-:22" -device "${NET_DEVICE},netdev=n0" \
     || fail "user networking (monitor did not finish)"
 grep -a -q 'HOST_FORWARD' out.txt || fail "user networking lists the hostfwd rule"
 grep -a -q "${PORT}" out.txt || fail "user networking forwards the requested port"
@@ -272,21 +294,25 @@ EOF
 monitor_cmds "info chardev
 info network" \
     -serial "tcp:127.0.0.1:$((PORT + 1)),server,nowait" -readconfig cfg.conf \
-    -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
-    -global virtio-net-pci.mac=52:54:00:aa:bb:cc \
+    -netdev user,id=n0 -device "${NET_DEVICE},netdev=n0" \
+    -global "${NET_DEVICE}.mac=52:54:00:aa:bb:cc" \
     || fail "option parsing (monitor did not finish)"
 grep -a -q "tcp:127.0.0.1:$((PORT + 1))" out.txt || fail "-serial tcp:host:port shorthand"
 grep -a -q "c0: filename=null" out.txt || fail "-readconfig chardev"
 grep -a -q '52:54:00:aa:bb:cc' out.txt || fail "-global property reaches the device"
 pass "-serial tcp: shorthand, -readconfig and -global parsing"
 
-monitor_cmds "screendump shot.ppm
+if [ -n "$GPU_ARGS" ]; then
+    monitor_cmds "screendump shot.ppm
 screendump shot.png -f png" $GPU_ARGS \
-    || fail "screendump (monitor did not finish)"
-[ "$(head -c 2 shot.ppm)" = "P6" ] || fail "screendump writes a PPM"
-# the PNG signature: 89 50 4e 47 0d 0a 1a 0a
-[ "$(head -c 8 shot.png | od -An -tx1 | tr -d ' \n')" = "89504e470d0a1a0a" ] || fail "screendump -f png writes a PNG"
-pass "screendump as PPM and PNG"
+        || fail "screendump (monitor did not finish)"
+    [ "$(head -c 2 shot.ppm)" = "P6" ] || fail "screendump writes a PPM"
+    # the PNG signature: 89 50 4e 47 0d 0a 1a 0a
+    [ "$(head -c 8 shot.png | od -An -tx1 | tr -d ' \n')" = "89504e470d0a1a0a" ] || fail "screendump -f png writes a PNG"
+    pass "screendump as PPM and PNG"
+else
+    echo "skip - screendump (no display device for $GUEST)"
+fi
 
 # virtfs: mapped-xattr and passthrough only work on Linux
 mkdir share9p
@@ -295,7 +321,7 @@ case "$(uname -s)" in Linux) models="$models mapped-xattr passthrough" ;; esac
 for model in $models; do
     monitor_cmds "info qtree" \
         -fsdev "local,id=f0,path=share9p,security_model=${model}" \
-        -device virtio-9p-pci,fsdev=f0,mount_tag=cosmo9p \
+        -device "${P9_DEVICE},fsdev=f0,mount_tag=cosmo9p" \
         || fail "virtfs ${model} (monitor did not finish)"
     grep -a -q 'mount_tag = "cosmo9p"' out.txt || fail "virtfs ${model}: virtio-9p device with its mount tag"
 done

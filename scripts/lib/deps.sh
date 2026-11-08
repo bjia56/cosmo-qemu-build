@@ -153,13 +153,17 @@ EOF
             --enable-static --disable-shared --disable-python
         run_logged "${arch}-libseccomp" bash -c "make -j${JOBS} -C src install && make -C include install && make install-pkgconfDATA"
         stage_sdl2_headers "${S}"
-        # WHPX only exists for x86_64 guests on x86_64 (Windows) hosts
-        if [ "${arch}" = "x86_64" ] && [[ " ${SYSTEM_TARGETS} " == *" x86_64 "* ]]; then
-            stage_whp_headers "${S}"
-        fi
-        # HVF only exists for aarch64 guests on aarch64 (Apple Silicon) hosts
-        if [ "${arch}" = "aarch64" ] && [[ " ${SYSTEM_TARGETS} " == *" aarch64 "* ]]; then
-            stage_hvf_headers "${S}"
-        fi
     fi
+}
+
+# deps_key <arch>: identifies what build_deps produces for <arch>, so a sysroot built from the same
+# inputs is reused (build.sh, and CI's cache key, which hashes the same files).
+deps_key() {
+    {
+        echo "$1 system=$([ -n "${SYSTEM_TARGETS}" ] && echo yes || echo no)"
+        "${COSMO_BIN}/cosmocc" --version | head -n 1
+        cd "${PROJECT_ROOT}" && find scripts/build.sh scripts/lib/common.sh scripts/lib/deps.sh \
+            scripts/lib/headers.sh scripts/lib/toolchain.sh patches/glib patches/libslirp \
+            patches/libseccomp compat -type f | LC_ALL=C sort | xargs sha256sum
+    } | sha256sum | cut -d' ' -f1
 }

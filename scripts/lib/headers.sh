@@ -39,6 +39,20 @@ stage_kernel_headers() {
     cp -r "${root}/asm-generic/." "${S}/include/asm-generic/"
 }
 
+# stage_accel_headers <arch> <sysroot>: headers for the accelerators this build compiles in. They
+# depend on the guests, so they are not part of the reusable sysroot (build_deps).
+stage_accel_headers() {
+    local arch=$1 S=$2
+    # WHPX only exists for x86_64 guests on x86_64 (Windows) hosts
+    if [ "${arch}" = "x86_64" ] && [[ " ${SYSTEM_TARGETS} " == *" x86_64 "* ]]; then
+        stage_whp_headers "${S}"
+    fi
+    # HVF only exists for aarch64 guests on aarch64 (Apple Silicon) hosts
+    if [ "${arch}" = "aarch64" ] && [[ " ${SYSTEM_TARGETS} " == *" aarch64 "* ]]; then
+        stage_hvf_headers "${S}"
+    fi
+}
+
 # stage_whp_headers <sysroot>
 #
 # Microsoft's MIT-licensed WHP headers (MicrosoftDocs/Virtualization-Documentation,

@@ -16,86 +16,138 @@ concurrency:
 
 env:
   cosmocc_version: '4.0.2'
+  # bump to discard every cached sysroot
+  sysroot_key_prefix: sysroot-v1
 
 jobs:
-  build:
-    name: Build qemu-img and the system emulators
+  plan:
+    name: Plan the build
     runs-on: ubuntu-latest
+    outputs:
+      guests: ${{ steps.plan.outputs.guests }}
+      sysroot_key: ${{ steps.plan.outputs.sysroot_key }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      # upload-artifact takes one name per step: every guest in scripts/lib/guests.sh needs an upload step below
-      - name: Check that every guest has an upload step
+      # The guests come from scripts/lib/guests.sh. The sysroot key covers the files deps_key
+      # (scripts/lib/deps.sh) hashes; if the two disagree, BUILD_STAGE=qemu stops the build.
+      - name: Read the guests and the sysroot key
+        id: plan
         run: |
           . scripts/lib/guests.sh
-          for g in $SUPPORTED_GUESTS; do
-            grep -q "^          name: qemu-system-${g}\$" .github/workflows/build.yml \
-              || { echo "no upload step for qemu-system-${g} in .github/workflows/build.yml" >&2; exit 1; }
-          done
+          guests="$(printf '%s\n' ${SUPPORTED_GUESTS} | jq -R . | jq -sc .)"
+          echo "guests=${guests}" >> "$GITHUB_OUTPUT"
+          echo "sysroot_key=${{ env.sysroot_key_prefix }}-${{ env.cosmocc_version }}-${{ hashFiles('scripts/build.sh', 'scripts/lib/common.sh', 'scripts/lib/deps.sh', 'scripts/lib/headers.sh', 'scripts/lib/toolchain.sh', 'patches/glib/**', 'patches/libslirp/**', 'patches/libseccomp/**', 'compat/**') }}" >> "$GITHUB_OUTPUT"
+          echo "Guests: ${guests}"
 
-      - name: Setup cosmocc
-        uses: bjia56/setup-cosmocc@c0097c34319baeca1b41cc857ec5c643f2f5baf6 # v0.0.6
+  # The sysroots (glib, gnutls, ...) do not depend on the guest: build each host architecture's
+  # once, cached under a key of the files that make it. They hold absolute paths (pkg-config), so
+  # every job builds in the same checkout directory.
+  deps:
+    name: Build the ${{ matrix.arch }} sysroot
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [ x86_64, aarch64 ]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Restore the sysroot
+        id: cache
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
-          version: ${{ env.cosmocc_version }}
+          path: build/${{ matrix.arch }}/sysroot
+          key: ${{ needs.plan.outputs.sysroot_key }}-${{ matrix.arch }}
 
-      # linux-libc-dev(-arm64-cross): kernel headers for QEMU's KVM code
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build cmake p7zip-full pkg-config zip bzip2 patch autoconf automake libtool libltdl-dev gperf \
-            qemu-user-static linux-libc-dev linux-libc-dev-arm64-cross
-          pipx install meson
+      - name: Set up the build
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: ./.github/actions/setup-build
+        with:
+          cosmocc-version: ${{ env.cosmocc_version }}
 
+      - name: Build the sysroot
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: BUILD_STAGE=deps ARCHES=${{ matrix.arch }} ./scripts/build.sh
+
+      - name: Save the sysroot
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: build/${{ matrix.arch }}/sysroot
+          key: ${{ steps.cache.outputs.cache-primary-key }}
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: build-logs-sysroot-${{ matrix.arch }}
+          path: build/logs/
+          if-no-files-found: ignore
+
+  build:
+    name: Build qemu-system-${{ matrix.guest }}
+    needs: [ plan, deps ]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        guest: ${{ fromJSON(needs.plan.outputs.guests) }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up the build
+        uses: ./.github/actions/setup-build
+        with:
+          cosmocc-version: ${{ env.cosmocc_version }}
+
+      - name: Restore the x86_64 sysroot
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: build/x86_64/sysroot
+          key: ${{ needs.plan.outputs.sysroot_key }}-x86_64
+          fail-on-cache-miss: true
+
+      - name: Restore the aarch64 sysroot
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: build/aarch64/sysroot
+          key: ${{ needs.plan.outputs.sysroot_key }}-aarch64
+          fail-on-cache-miss: true
+
+      # qemu-img is built every time; the x86_64 job's copy is the one published
       - name: Build
-        run: ./scripts/build.sh
+        run: BUILD_STAGE=qemu SYSTEM_TARGETS=${{ matrix.guest }} ./scripts/build.sh
+
+      - name: Upload qemu-system-${{ matrix.guest }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qemu-system-${{ matrix.guest }}
+          path: out/qemu-system-${{ matrix.guest }}.com
+          if-no-files-found: error
 
       - name: Upload qemu-img
+        if: matrix.guest == 'x86_64'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: qemu-img
           path: out/qemu-img.com
           if-no-files-found: error
 
-      - name: Upload qemu-system-x86_64
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: qemu-system-x86_64
-          path: out/qemu-system-x86_64.com
-          if-no-files-found: error
-
-      - name: Upload qemu-system-aarch64
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: qemu-system-aarch64
-          path: out/qemu-system-aarch64.com
-          if-no-files-found: error
-
-      - name: Upload qemu-system-riscv64
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: qemu-system-riscv64
-          path: out/qemu-system-riscv64.com
-          if-no-files-found: error
-
-      - name: Upload qemu-system-ppc
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: qemu-system-ppc
-          path: out/qemu-system-ppc.com
-          if-no-files-found: error
-
       - name: Upload build logs on failure
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: build-logs
+          name: build-logs-${{ matrix.guest }}
           path: build/logs/
           if-no-files-found: ignore
 
+  # One job per runner and guest, so adding a guest adds jobs rather than stretching their timeouts.
+  # The guest-independent stages (qemu-img, -sandbox, SDL) run with the x86_64 guest.
   smoke:
-    name: Smoke tests (${{ matrix.name }})
-    needs: build
-    runs-on: ${{ matrix.os }}
+    name: Smoke tests (${{ matrix.runner.name }}, ${{ matrix.guest }})
+    needs: [ plan, build ]
+    runs-on: ${{ matrix.runner.os }}
     permissions:
       contents: read
       actions: read
@@ -107,7 +159,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
+        guest: ${{ fromJSON(needs.plan.outputs.guests) }}
+        runner:
           - name: Linux x86_64
             os: ubuntu-latest
           - name: Linux aarch64
@@ -120,40 +173,40 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Install SDL2 and Xvfb
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.guest == 'x86_64'
         run: sudo apt-get update && sudo apt-get install -y libsdl2-2.0-0 xvfb xdotool
 
       - name: Download the executables
         run: |
           mkdir dist
-          . scripts/lib/guests.sh
-          for n in qemu-img $(for g in $SUPPORTED_GUESTS; do echo "qemu-system-$g"; done); do
+          for n in qemu-img qemu-system-${{ matrix.guest }}; do
             gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$n" --dir dist
           done
           ls -l dist
 
       # One step per stage, each with its own timeout: a hang in one does not hide the rest
       - name: Test qemu-img
+        if: matrix.guest == 'x86_64'
         timeout-minutes: 10
         run: ./scripts/smoke_test_all.sh dist img
 
       - name: Test -sandbox
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.guest == 'x86_64' }}
         timeout-minutes: 10
         run: ./scripts/smoke_test_all.sh dist sandbox
 
-      - name: Test the system emulators
+      - name: Test the system emulator
         if: ${{ !cancelled() }}
-        timeout-minutes: 15
+        timeout-minutes: 10
         run: ./scripts/smoke_test_all.sh dist system
 
-      - name: Test the system emulators with -sandbox
+      - name: Test the system emulator with -sandbox
         if: ${{ !cancelled() }}
-        timeout-minutes: 15
+        timeout-minutes: 10
         run: ./scripts/smoke_test_all.sh dist system-sandbox
 
       - name: Test -display sdl
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.guest == 'x86_64' }}
         timeout-minutes: 10
         run: ./scripts/smoke_test_all.sh dist sdl
 

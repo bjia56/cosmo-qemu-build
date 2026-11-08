@@ -10,7 +10,7 @@ runs on Linux, macOS and Windows, on x86_64 and aarch64.
 | `qemu-system-x86_64.com` | x86_64 system emulator, firmware (SeaBIOS, edk2, ...) embedded. |
 | `qemu-system-aarch64.com` | aarch64 system emulator, edk2 firmware embedded. |
 | `qemu-system-riscv64.com` | riscv64 system emulator (TCG only), OpenSBI and edk2 firmware embedded. |
-| `qemu-system-ppc.com` | 32-bit PowerPC system emulator (TCG only): Power Macintosh (`mac99`, `g3beige`), `pegasos2`, `sam460ex`, `ppce500` and more; OpenBIOS, U-Boot and VOF embedded. |
+| `qemu-system-ppc64.com` | PowerPC system emulator (TCG only), 32- and 64-bit: Power Macintosh (`mac99`, `g3beige`), `pseries`, `powernv`, `pegasos2`, `sam460ex`, `ppce500` and more; OpenBIOS, SLOF, skiboot, U-Boot and VOF embedded. |
 
 ## Acceleration
 
@@ -24,7 +24,7 @@ The system emulators choose an accelerator at run time, and TCG (software emulat
 
 Use `-machine accel=kvm:tcg` (or `whpx:tcg`, `hvf:tcg`) to try an accelerator and fall back to TCG.
 
-Guests without a hardware accelerator (riscv64, ppc) always use TCG.
+Guests without a hardware accelerator (riscv64, ppc64) always use TCG.
 
 ## riscv64 guests
 
@@ -35,23 +35,20 @@ For writable UEFI variables, copy the template out first (`unzip -p qemu-system-
 and add `-drive if=pflash,unit=1,format=raw,file=vars.fd`.
 In Git Bash (MSYS2), set `MSYS2_ARG_CONV_EXCL='if=pflash'`, or it rewrites `/zip/...` into a path under its install directory.
 
-## PowerPC Macs
+## PowerPC
 
-`-machine mac99` is a G4 Power Mac and `-machine g3beige` a beige G3, both booting the embedded OpenBIOS, which hands
-Mac OS the `qemu_vga.ndrv` display driver. Mac OS X wants `-machine mac99,via=pmu` (USB keyboard and mouse); Mac OS 9 also
-runs on `mac99`. For example: `./qemu-system-ppc.com -machine mac99,via=pmu -m 512 -cdrom install.iso -boot d -vnc 127.0.0.1:0`.
-The G5 (`-cpu 970`) is in `qemu-system-ppc64`, which is not built.
+`qemu-system-ppc64` runs every 32-bit board of `qemu-system-ppc` too, which is not built. The Power Macs boot the
+embedded OpenBIOS, which hands Mac OS the `qemu_vga.ndrv` display driver:
 
-CI builds on Linux, then runs the smoke tests on native runners: Linux x86_64 and aarch64, macOS arm64 and
-Windows x86_64, and all of them must pass for a release. A WHPX guest boots on the Windows runner. KVM and
-HVF need hardware the runners do not provide and are untested.
+| Machine | Mac |
+| --- | --- |
+| `-machine g3beige` | Beige G3 (PowerPC 750) |
+| `-machine mac99 -cpu G4` | G4 Power Mac. Without `-cpu G4`, `mac99` is a G5 (970FX) in `qemu-system-ppc64` |
+| `-machine mac99` | G5 Power Mac |
 
-HVF needs the `com.apple.security.hypervisor` entitlement on the loader that Cosmopolitan compiles on first
-run (needs the Xcode command line tools). The executables use their own loader, `.q.ape-01` in
-`${TMPDIR:-$HOME}`, which signs itself on first use; see [`patches/README.md`](patches/README.md).
-
-Not included: network block drivers (curl, ssh, nfs, rbd, gluster), SASL, libgcrypt, io_uring, linux-aio,
-GTK, OpenGL and vhost.
+Mac OS X wants `via=pmu` (USB keyboard and mouse), for example:
+`./qemu-system-ppc64.com -machine mac99,via=pmu -cpu G4 -m 512 -cdrom install.iso -boot d -vnc 127.0.0.1:0`.
+`-machine pseries` (SLOF) and `-machine powernv` (skiboot) are the 64-bit IBM POWER machines.
 
 ## Display: VNC
 
@@ -150,7 +147,8 @@ Sources are checked against pinned commits and downloads against pinned SHA-256 
 
 The guest architectures and the firmware each emulator embeds are listed in
 [`scripts/lib/guests.sh`](scripts/lib/guests.sh), which also says what else adding one involves; `SYSTEM_TARGETS=riscv64`
-builds a subset. Environment variables are documented at the top of [`scripts/build.sh`](scripts/build.sh). Only
+builds a subset. Each host architecture's sysroot of dependencies is kept in `build/` and reused while
+its inputs are unchanged, so a second run only builds QEMU. Environment variables are documented at the top of [`scripts/build.sh`](scripts/build.sh). Only
 `QEMU_VERSION`s with a directory under [`patches/qemu/`](patches/qemu) work (currently `v9.2.0`).
 
 ## License

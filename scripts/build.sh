@@ -16,6 +16,9 @@
 #     with linux/, asm/ and asm-generic/
 #
 # Optional environment:
+#   BUILD_STAGE          "all" (default); "deps" stops after the sysroots; "qemu" requires them to
+#                        exist already. A sysroot built from the same inputs (deps_key in
+#                        scripts/lib/deps.sh) is reused, so a later "all" run only builds QEMU.
 #   JOBS                 parallel build jobs (default: nproc)
 #   ARCHES               host architectures (default: "x86_64 aarch64")
 #   SYSTEM_TARGETS       guest architectures to build emulators for (default: every guest in
@@ -49,6 +52,7 @@ TOOLS_DIR="${BUILD_DIR}/tools"
 # shellcheck source=lib/guests.sh
 . "${SCRIPT_DIR}/lib/guests.sh"
 
+BUILD_STAGE="${BUILD_STAGE:-all}"
 JOBS="${JOBS:-$(nproc)}"
 ARCHES="${ARCHES:-x86_64 aarch64}"
 SYSTEM_TARGETS="${SYSTEM_TARGETS-${SUPPORTED_GUESTS}}"
@@ -182,6 +186,7 @@ if [[ " ${ARCHES} " == *" aarch64 "* ]] && [ -z "${EXE_WRAPPER_aarch64:-}" ]; th
         || die "qemu-aarch64-static not found in PATH (it runs the aarch64 configure-time probes;
 or set EXE_WRAPPER_aarch64 to another wrapper)"
 fi
+case "${BUILD_STAGE}" in all|deps|qemu) ;; *) die "BUILD_STAGE must be all, deps or qemu (got '${BUILD_STAGE}')" ;; esac
 for guest in $SYSTEM_TARGETS; do
     is_supported_guest "$guest" \
         || die "unsupported system emulator target '${guest}' (supported: ${SUPPORTED_GUESTS})"
@@ -196,7 +201,11 @@ echo "  meson:   $(meson --version)"
 echo ""
 
 rm -rf "${SRC_DIR}" "${TOOLS_DIR}" "${LOG_DIR}"
-for arch in ${ARCHES}; do rm -rf "${BUILD_DIR:?}/${arch}"; done
+# everything but the sysroots, which are checked against their key below
+for arch in ${ARCHES}; do
+    [ -d "${BUILD_DIR}/${arch}" ] || continue
+    find "${BUILD_DIR:?}/${arch}" -mindepth 1 -maxdepth 1 ! -name sysroot -exec rm -rf {} +
+done
 mkdir -p "${DL_DIR}" "${LOG_DIR}" "${SRC_DIR}" "${TOOLS_DIR}" "${OUT_DIR}"
 
 prepare_toolchain
@@ -256,7 +265,20 @@ for arch in $ARCHES; do
     B="${BUILD_DIR}/${arch}"
     S="${B}/sysroot"
     mkdir -p "${B}" "${S}"
-    build_deps "${arch}" "${S}" "${B}"
+    key="$(deps_key "${arch}")"
+    if [ -f "${S}/.deps-key" ] && [ "$(cat "${S}/.deps-key")" = "${key}" ]; then
+        echo "  reusing the ${arch} sysroot (${key:0:12})"
+    else
+        [ "${BUILD_STAGE}" != "qemu" ] \
+            || die "no ${arch} sysroot built from the current inputs in ${S} (BUILD_STAGE=qemu); build it with BUILD_STAGE=deps"
+        rm -rf "${S}" && mkdir -p "${S}"
+        build_deps "${arch}" "${S}" "${B}"
+        echo "${key}" > "${S}/.deps-key"
+    fi
+    [ "${BUILD_STAGE}" = "deps" ] && continue
+    # QEMU's configure prefers these to its --cross-prefix, and a reused sysroot does not set them
+    export CC="${arch}-cosmo-cc" AR="${arch}-cosmo-ar" RANLIB="${arch}-cosmo-ranlib"
+    [ -z "${SYSTEM_TARGETS}" ] || stage_accel_headers "${arch}" "${S}"
     build_qemu "${arch}" "${S}" "${B}"
     unset COSMO_MCOSMO
 
@@ -269,6 +291,12 @@ for arch in $ARCHES; do
         firmware_done=1
     fi
 done
+
+if [ "${BUILD_STAGE}" = "deps" ]; then
+    echo ""
+    echo "Sysroots ready: $(for arch in ${ARCHES}; do printf '%s ' "${BUILD_DIR}/${arch}/sysroot"; done)"
+    exit 0
+fi
 
 echo ""
 echo "================================================"

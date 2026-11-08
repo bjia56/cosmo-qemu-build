@@ -3,11 +3,11 @@
 # The guest architectures this project builds system emulators for, and the firmware each one embeds.
 # POSIX sh: sourced by scripts/build.sh, scripts/smoke_test_all.sh and the CI workflow.
 #
-# Adding a guest: add it to SUPPORTED_GUESTS and to guest_firmware_regex, give it a case in
-# scripts/smoke_test_system.sh, and add its upload step to .github/workflows/build.yml.
+# Adding a guest: add it to SUPPORTED_GUESTS and to guest_firmware_regex, and give it a case in
+# scripts/smoke_test_system.sh. CI builds and tests every guest listed here, one job each.
 
 # Order matters only for output: the first one is also the guest the -sandbox test runs.
-SUPPORTED_GUESTS="x86_64 aarch64 riscv64 ppc"
+SUPPORTED_GUESTS="x86_64 aarch64 riscv64 ppc64"
 
 # guest_firmware_regex <guest>: regex of the files under share/qemu to embed for <guest>
 guest_firmware_regex() {
@@ -17,9 +17,10 @@ guest_firmware_regex() {
         # OpenSBI is the default -bios of the virt machine; edk2 runs on top of it from pflash
         # (QEMU 9.2 ships no firmware descriptor for it)
         riscv64) echo '^(opensbi-riscv64-generic-fw_dynamic\.bin|vgabios.*\.bin|efi-.*\.rom|edk2-riscv-.*\.fd|edk2-licenses\.txt|keymaps/.+)$' ;;
-        # OpenBIOS for the Macs (g3beige, mac99) with the Mac OS VGA driver it hands on, VOF for
-        # pegasos2, U-Boot for ppce500 and sam460ex, device trees for bamboo and sam460ex
-        ppc) echo '^(openbios-ppc|qemu_vga\.ndrv|vof\.bin|u-boot\.e500|u-boot-sam460-.*\.bin|(bamboo|canyonlands)\.dtb|vgabios.*\.bin|efi-.*\.rom|keymaps/.+)$' ;;
+        # ppc64 also has every 32-bit board. OpenBIOS for the Macs (g3beige, mac99) with the Mac OS
+        # VGA driver it hands on, SLOF and VOF for pseries, skiboot for powernv, VOF for pegasos2,
+        # U-Boot for ppce500 and sam460ex, device trees for bamboo and sam460ex
+        ppc64) echo '^(openbios-ppc|qemu_vga\.ndrv|slof\.bin|skiboot\.lid|vof(-nvram)?\.bin|u-boot\.e500|u-boot-sam460-.*\.bin|(bamboo|canyonlands)\.dtb|vgabios.*\.bin|efi-.*\.rom|keymaps/.+)$' ;;
         *) return 1 ;;
     esac
 }
